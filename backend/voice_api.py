@@ -1106,3 +1106,8 @@ def get_session_report(session_id: str):
     )
     return report
 
+if __name__ == "__main__":
+    import uvicorn
+    print("[VoiceAPI] Starting FastAPI server on port 8000...")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
