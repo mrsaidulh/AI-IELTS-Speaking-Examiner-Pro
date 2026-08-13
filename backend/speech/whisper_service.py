@@ -187,6 +187,19 @@ class WhisperService:
             else:
                 raw_data = audio_source
 
+            if raw_data and not raw_data.startswith(b"RIFF"):
+                # Convert raw 16kHz 16-bit mono PCM bytes to valid WAV format
+                wav_io = io.BytesIO()
+                try:
+                    with wave.open(wav_io, "wb") as wf:
+                        wf.setnchannels(1)
+                        wf.setsampwidth(2)
+                        wf.setframerate(16000)
+                        wf.writeframes(raw_data)
+                    raw_data = wav_io.getvalue()
+                except Exception:
+                    pass
+
             temp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
             temp_file.write(raw_data)
             temp_file.close()
