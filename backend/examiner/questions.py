@@ -36,6 +36,8 @@ PART1_QUESTIONS = [
     }
 ]
 
+PART_1_QUESTIONS = PART1_QUESTIONS
+
 PART2_CUE_CARD = {
     "id": "p2_journey_01",
     "topic": "Describe a memorable journey you have taken.",
@@ -46,6 +48,8 @@ PART2_CUE_CARD = {
         "And explain why this journey was memorable to you."
     ]
 }
+
+PART_2_CUE_CARD = PART2_CUE_CARD
 
 PART3_QUESTIONS = [
     {
@@ -70,3 +74,5 @@ PART3_QUESTIONS = [
         "type": "evaluative"
     }
 ]
+
+PART_3_QUESTIONS = PART3_QUESTIONS
