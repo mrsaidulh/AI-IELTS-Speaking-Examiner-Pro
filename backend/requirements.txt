@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+python-multipart
+requests
+faster-whisper
+sqlalchemy
+python-dotenv
+librosa
+soundfile
+numpy
+torch
+torchaudio
+silero-vad

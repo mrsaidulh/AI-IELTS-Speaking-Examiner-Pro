@@ -1,0 +1,31 @@
+{
+  "band": 5,
+  "fluency_coherence": {
+    "descriptors": [
+      "Usually maintains flow of speech but uses repetition, self-correction, and/or slow speech to keep going",
+      "May produce simple speech fluently, but experiences hesitation with more complex communication",
+      "Overuses certain connectives and discourse markers"
+    ]
+  },
+  "lexical_resource": {
+    "descriptors": [
+      "Manages to talk about familiar and unfamiliar topics, but uses vocabulary with limited flexibility",
+      "Attempts paraphrase with varying success",
+      "Frequent inappropriate word choice and collocations"
+    ]
+  },
+  "grammar": {
+    "descriptors": [
+      "Produces basic sentence forms with reasonable accuracy",
+      "Uses a limited range of complex structures which frequently contain errors",
+      "Errors may cause comprehension problems"
+    ]
+  },
+  "pronunciation": {
+    "descriptors": [
+      "Shows all the positive features of Band 4 and some but not all of Band 6",
+      "Speech is generally intelligible despite noticeable accent and mispronunciations",
+      "Lacks consistent control of sentence stress and intonation"
+    ]
+  }
+}

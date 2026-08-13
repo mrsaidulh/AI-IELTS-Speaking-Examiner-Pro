@@ -1,0 +1,197 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Mic, MicOff, Send, Volume2, Square, RefreshCw, AlertCircle } from 'lucide-react';
+
+interface AudioRecorderControlsProps {
+  onSendSpeech: (text: string) => void;
+  isLoading: boolean;
+  latestExaminerText?: string;
+  onPlayExaminerVoice?: () => void;
+  isSpeakingExaminer?: boolean;
+}
+
+export const AudioRecorderControls: React.FC<AudioRecorderControlsProps> = ({
+  onSendSpeech,
+  isLoading,
+  latestExaminerText,
+  onPlayExaminerVoice,
+  isSpeakingExaminer = false,
+}) => {
+  const [inputText, setInputText] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(true);
+  const recognitionRef = useRef<any>(null);
+
+  // Initialize SpeechRecognition if available in browser
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const rec = new SpeechRecognition();
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = 'en-US';
+
+      rec.onresult = (event: any) => {
+        let currentTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          currentTranscript += event.results[i][0].transcript;
+        }
+        setInputText(currentTranscript);
+      };
+
+      rec.onerror = (event: any) => {
+        console.warn('Speech recognition error:', event.error);
+        setIsListening(false);
+      };
+
+      rec.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = rec;
+    } else {
+      setSpeechSupported(false);
+    }
+  }, []);
+
+  const toggleListening = () => {
+    if (!recognitionRef.current) return;
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (err) {
+        console.error('Error starting speech rec:', err);
+      }
+    }
+  };
+
+  const handleSend = () => {
+    if (!inputText.trim() || isLoading) return;
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    }
+    onSendSpeech(inputText.trim());
+    setInputText('');
+  };
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl sticky bottom-4 z-20 backdrop-blur-lg">
+      
+      {/* Latest Examiner Text Playback Banner */}
+      {latestExaminerText && (
+        <div className="flex items-center justify-between bg-indigo-950/40 border border-indigo-500/30 rounded-xl px-3.5 py-2.5 mb-3">
+          <div className="flex items-center space-x-2 text-xs text-indigo-200 truncate pr-2">
+            <Volume2 className={`w-4 h-4 text-indigo-400 shrink-0 ${isSpeakingExaminer ? 'animate-bounce' : ''}`} />
+            <span className="font-medium text-slate-300 truncate">
+              Examiner: "{latestExaminerText}"
+            </span>
+          </div>
+
+          {onPlayExaminerVoice && (
+            <button
+              onClick={onPlayExaminerVoice}
+              className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-1 rounded-lg shrink-0 transition-colors"
+            >
+              {isSpeakingExaminer ? 'Speaking...' : 'Play Voice'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Main Mic & Text Input Controls */}
+      <div className="flex items-stretch space-x-3">
+        
+        {/* Mic Recording Button */}
+        <button
+          onClick={toggleListening}
+          disabled={!speechSupported || isLoading}
+          className={`px-4 sm:px-5 rounded-xl font-bold flex flex-col items-center justify-center transition-all ${
+            isListening
+              ? 'bg-rose-600 text-white animate-pulse ring-4 ring-rose-500/30 shadow-lg shadow-rose-600/30'
+              : speechSupported
+              ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20'
+              : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+          }`}
+          title={speechSupported ? (isListening ? 'Stop Recording' : 'Start Speech Recording') : 'Web Speech API not supported on browser'}
+        >
+          {isListening ? (
+            <>
+              <Square className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px] uppercase font-bold">Stop</span>
+            </>
+          ) : (
+            <>
+              <Mic className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px] uppercase font-bold">Speak</span>
+            </>
+          )}
+        </button>
+
+        {/* Input Text Box / Speech Transcript Preview */}
+        <div className="flex-1 relative">
+          <textarea
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder={
+              isListening
+                ? 'Listening to your speech... (speak clearly into mic)'
+                : 'Speak into microphone or type your IELTS candidate response here...'
+            }
+            rows={2}
+            className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+          />
+
+          {isListening && (
+            <div className="absolute top-2 right-3 flex items-center space-x-1.5 text-rose-400 text-xs font-semibold">
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+              <span>Recording</span>
+            </div>
+          )}
+        </div>
+
+        {/* Send Button */}
+        <button
+          onClick={handleSend}
+          disabled={!inputText.trim() || isLoading}
+          className={`px-5 rounded-xl font-bold flex items-center justify-center transition-all ${
+            inputText.trim() && !isLoading
+              ? 'bg-gradient-to-r from-indigo-600 to-sky-500 hover:from-indigo-500 hover:to-sky-400 text-white shadow-md shadow-indigo-500/20'
+              : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+          }`}
+        >
+          {isLoading ? (
+            <RefreshCw className="w-5 h-5 animate-spin" />
+          ) : (
+            <Send className="w-5 h-5" />
+          )}
+        </button>
+
+      </div>
+
+      {/* Helper Footer Bar */}
+      <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2 px-1">
+        <span className="flex items-center space-x-1">
+          {!speechSupported && (
+            <span className="text-amber-400 flex items-center mr-2">
+              <AlertCircle className="w-3 h-3 mr-1" /> Mic auto-transcribe unavailable (use text box)
+            </span>
+          )}
+          <span>Press <strong>Enter</strong> to submit answer • Practice natural pauses & clear articulation</span>
+        </span>
+        <span className="font-mono text-slate-500 hidden sm:inline">{inputText.length} chars</span>
+      </div>
+
+    </div>
+  );
+};

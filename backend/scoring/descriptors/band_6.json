@@ -1,0 +1,31 @@
+{
+  "band": 6,
+  "fluency_coherence": {
+    "descriptors": [
+      "Is willing to speak at length, though may lose coherence at times due to hesitation or repetition",
+      "Uses a range of connectives and discourse markers, though not always appropriately",
+      "Generally develops topics coherent and clear"
+    ]
+  },
+  "lexical_resource": {
+    "descriptors": [
+      "Has a wide enough vocabulary to discuss topics at length and make meaning clear",
+      "Generally uses vocabulary appropriately despite occasional inappropriate choices",
+      "Successfully uses paraphrase when necessary"
+    ]
+  },
+  "grammar": {
+    "descriptors": [
+      "Uses a mix of simple and complex structures, but with limited flexibility",
+      "May make frequent mistakes with complex structures, though these rarely cause comprehension issues",
+      "Maintains good control in simple sentence forms"
+    ]
+  },
+  "pronunciation": {
+    "descriptors": [
+      "Uses a range of pronunciation features with mixed control",
+      "Is generally intelligible throughout, though mispronunciation of individual words reduces clarity at times",
+      "Sustains rhythm and stress with minor inconsistencies"
+    ]
+  }
+}

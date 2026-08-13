@@ -1,0 +1,10 @@
+{
+  "name": "AI IELTS Speaking Pro",
+  "description": "Interactive IELTS Speaking examiner, real-time practice tutor, official band score report evaluator, and step-by-step local AI deployment guide.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

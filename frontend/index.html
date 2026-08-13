@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IELTS AI Examiner - Prototype</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+            max-width: 650px;
+            margin: 40px auto;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            background: #ffffff;
+        }
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: #1e293b;
+        }
+        p.subtitle {
+            color: #64748b;
+            font-size: 0.95rem;
+            margin-bottom: 24px;
+        }
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        button {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #start {
+            background-color: #2563eb;
+            color: white;
+        }
+        #start:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
+        }
+        #stop {
+            background-color: #ef4444;
+            color: white;
+        }
+        #stop:disabled {
+            background-color: #cbd5e1;
+            cursor: not-allowed;
+        }
+        .status-box {
+            background: #f1f5f9;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .status-label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #64748b;
+            margin-bottom: 4px;
+        }
+        #status {
+            font-weight: 600;
+            color: #0f172a;
+        }
+        .transcript-box {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px;
+            min-height: 120px;
+            background: #fafafa;
+        }
+        .question-text {
+            color: #1e40af;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+        .candidate-text {
+            color: #334155;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>IELTS AI Examiner Prototype</h1>
+    <p class="subtitle">Lesson 35 — Full-Duplex Live Voice Pipeline</p>
+
+    <div class="controls">
+        <button id="start">Start Speaking</button>
+        <button id="stop" disabled>Stop</button>
+    </div>
+
+    <div class="status-box">
+        <div class="status-label">Engine Status</div>
+        <div id="status">Ready</div>
+    </div>
+
+    <div class="transcript-box">
+        <div id="questionDisplay" class="question-text">Click "Start Speaking" to connect...</div>
+        <div id="transcriptDisplay" class="candidate-text">Candidate speech transcript will appear here.</div>
+    </div>
+
+    <script>
+        const startButton = document.getElementById("start");
+        const stopButton = document.getElementById("stop");
+        const statusDisplay = document.getElementById("status");
+        const questionDisplay = document.getElementById("questionDisplay");
+        const transcriptDisplay = document.getElementById("transcriptDisplay");
+
+        let stream;
+        let recorder;
+        let socket;
+        let audioContext;
+
+        startButton.onclick = async () => {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: 16000
+                    }
+                });
+
+                statusDisplay.innerText = "Connecting to WebSocket...";
+                const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+                const wsUrl = `${protocol}//${window.location.host}/ws/speaking/prototype-session`;
+
+                socket = new WebSocket(wsUrl);
+
+                socket.onopen = () => {
+                    statusDisplay.innerText = "Connected & Recording (Microphone Active)";
+                    startButton.disabled = true;
+                    stopButton.disabled = false;
+
+                    // Send start signal
+                    socket.send(JSON.stringify({ type: "session_start" }));
+
+                    // Start MediaRecorder audio chunk streaming
+                    recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+                    recorder.ondataavailable = async (event) => {
+                        if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+                            const buffer = await event.data.arrayBuffer();
+                            socket.send(buffer);
+                        }
+                    };
+                    recorder.start(250); // 250ms audio chunk interval
+                };
+
+                socket.onmessage = async (event) => {
+                    if (typeof event.data === "string") {
+                        const data = JSON.loads(event.data);
+                        if (data.type === "examiner_question" || data.type === "question") {
+                            questionDisplay.innerText = "Examiner: " + (data.text || data.question);
+                            statusDisplay.innerText = "Examiner Asked Question";
+                        } else if (data.type === "transcript" || data.type === "candidate_transcript") {
+                            transcriptDisplay.innerText = "Candidate: " + data.text;
+                            statusDisplay.innerText = "Transcript Processed";
+                        } else if (data.type === "status" || data.type === "phase") {
+                            statusDisplay.innerText = "Engine Phase: " + data.value;
+                        }
+                    } else if (event.data instanceof Blob || event.data instanceof ArrayBuffer) {
+                        // Binary audio response from Kokoro TTS
+                        statusDisplay.innerText = "Playing Examiner Audio...";
+                        const blob = event.data instanceof Blob ? event.data : new Blob([event.data], { type: "audio/mp3" });
+                        const audioUrl = URL.createObjectURL(blob);
+                        const audio = new Audio(audioUrl);
+                        audio.play();
+                    }
+                };
+
+                socket.onclose = () => {
+                    statusDisplay.innerText = "WebSocket Disconnected";
+                    stopRecording();
+                };
+
+                socket.onerror = (err) => {
+                    console.error("WebSocket error:", err);
+                    statusDisplay.innerText = "WebSocket Error";
+                };
+
+            } catch (err) {
+                console.error("Microphone access error:", err);
+                statusDisplay.innerText = "Microphone Access Denied: " + err.message;
+            }
+        };
+
+        stopButton.onclick = () => {
+            stopRecording();
+        };
+
+        function stopRecording() {
+            if (recorder && recorder.state !== "inactive") {
+                recorder.stop();
+            }
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ type: "audio_end" }));
+                socket.close();
+            }
+            statusDisplay.innerText = "Microphone stopped";
+            startButton.disabled = false;
+            stopButton.disabled = true;
+        }
+    </script>
+</body>
+</html>

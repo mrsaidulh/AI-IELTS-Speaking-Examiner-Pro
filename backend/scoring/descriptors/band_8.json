@@ -1,0 +1,31 @@
+{
+  "band": 8,
+  "fluency_coherence": {
+    "descriptors": [
+      "Speaks fluently with only rare repetition or self-correction",
+      "Hesitation is usually content-related rather than to search for language",
+      "Develops topics coherently and appropriately"
+    ]
+  },
+  "lexical_resource": {
+    "descriptors": [
+      "Uses a wide vocabulary resource readily and flexibly to convey precise meaning",
+      "Uses less common and idiomatic vocabulary skillfully, with occasional inaccuracies",
+      "Paraphrases effectively as required"
+    ]
+  },
+  "grammar": {
+    "descriptors": [
+      "Uses a wide range of structures flexibly",
+      "Produces a majority of error-free sentences with only occasional appropriateness or basic errors",
+      "Maintains strong grammatical control throughout"
+    ]
+  },
+  "pronunciation": {
+    "descriptors": [
+      "Uses a wide range of pronunciation features with natural control",
+      "Sustains flexible use of features throughout, with only occasional lapses",
+      "Is effortless to understand throughout"
+    ]
+  }
+}

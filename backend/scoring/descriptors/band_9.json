@@ -1,0 +1,29 @@
+{
+  "band": 9,
+  "fluency_coherence": {
+    "descriptors": [
+      "Speaks fluently with only rare repetition or self-correction; any hesitation is content-related",
+      "Speaks coherently with fully appropriate cohesive features",
+      "Develops topics fully and appropriately"
+    ]
+  },
+  "lexical_resource": {
+    "descriptors": [
+      "Uses vocabulary with full flexibility and precision in all topics",
+      "Uses idiomatic language naturally and accurately",
+      "Full mastery of paraphrase"
+    ]
+  },
+  "grammar": {
+    "descriptors": [
+      "Uses a full range of structures naturally and appropriately",
+      "Produces consistently accurate structures with complete native-like flexibility"
+    ]
+  },
+  "pronunciation": {
+    "descriptors": [
+      "Uses a full range of pronunciation features with precision and subtlety",
+      "Sustains effortless intelligibility and natural intonation throughout"
+    ]
+  }
+}
