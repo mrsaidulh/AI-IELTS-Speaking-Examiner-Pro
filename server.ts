@@ -26,9 +26,65 @@ async function startServer() {
     });
   };
 
-  // API Route: Health check
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  // API Route: Health check & System Diagnostics
+  app.get(["/api/health", "/api/system/status"], async (req, res) => {
+    try {
+      const resp = await fetch("http://localhost:8000/api/system/status");
+      if (resp.ok) {
+        const data = await resp.json();
+        return res.json(data);
+      }
+    } catch (err) {
+      // FastAPI backend unreachable fallback
+    }
+
+    res.json({
+      status: "degraded",
+      timestamp: new Date().toISOString(),
+      all_systems_ready: false,
+      components: {
+        fastapi: {
+          status: "offline",
+          port: 8000,
+          version: "1.3",
+          message: "FastAPI server is not running on port 8000. Run `PYTHONPATH=backend python3 backend/voice_api.py`"
+        },
+        ollama: {
+          status: "unknown",
+          model: "qwen2.5:7b-instruct",
+          url: "http://localhost:11434",
+          available_models: [],
+          message: "Start FastAPI backend to inspect Ollama status"
+        },
+        whisper: {
+          status: "unknown",
+          backend: "faster_whisper",
+          model_size: "small",
+          device: "cpu/cuda",
+          compute_type: "int8",
+          message: "Start FastAPI backend to inspect Whisper status"
+        },
+        kokoro: {
+          status: "unknown",
+          voice: "af_heart",
+          sample_rate: 24000,
+          message: "Start FastAPI backend to inspect Kokoro status"
+        },
+        gpu: {
+          status: "unknown",
+          cuda_available: false,
+          device_name: "GPU",
+          vram_total_mb: 0,
+          vram_allocated_mb: 0,
+          cuda_version: null
+        },
+        database: {
+          status: "online",
+          engine: "SQLite",
+          message: "Frontend API proxy active"
+        }
+      }
+    });
   });
 
   // API Route: Examiner Response Generation

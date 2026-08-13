@@ -75,14 +75,22 @@ export interface LocalStackComponent {
   status: string;
 }
 
-export interface HardwarePreset {
-  name: string;
-  vramGb: number;
-  ramGb: number;
-  cpuCores: number;
-  llmModel: string;
-  sttModel: string;
-  ttsModel: string;
-  supportedUsers: number;
-  status: 'Recommended' | 'Minimum' | 'High Performance';
+export interface SystemComponentStatus {
+  status: 'online' | 'offline' | 'degraded' | 'fallback' | 'cpu_only' | 'unknown';
+  message: string;
+  [key: string]: any;
+}
+
+export interface SystemStatusData {
+  status: 'ok' | 'degraded' | 'error';
+  timestamp: string;
+  all_systems_ready: boolean;
+  components: {
+    fastapi: SystemComponentStatus & { port: number; version: string };
+    ollama: SystemComponentStatus & { model: string; url: string; available_models: string[] };
+    whisper: SystemComponentStatus & { backend: string; model_size: string; device: string; compute_type: string };
+    kokoro: SystemComponentStatus & { voice: string; sample_rate: number };
+    gpu: SystemComponentStatus & { cuda_available: boolean; device_name: string; vram_total_mb: number; vram_allocated_mb: number; cuda_version: string | null };
+    database: SystemComponentStatus & { engine: string };
+  };
 }

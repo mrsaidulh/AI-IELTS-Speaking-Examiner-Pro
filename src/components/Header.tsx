@@ -13,6 +13,7 @@ interface HeaderProps {
   setTargetBand: (band: number) => void;
   showSettings: boolean;
   setShowSettings: (show: boolean) => void;
+  onOpenServerStatus: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -26,6 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
   setTargetBand,
   showSettings,
   setShowSettings,
+  onOpenServerStatus,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-slate-100 shadow-md">
@@ -89,7 +91,20 @@ export const Header: React.FC<HeaderProps> = ({
           </nav>
 
           {/* Mode Switcher & Settings */}
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2 sm:space-x-3">
+            <button
+              onClick={onOpenServerStatus}
+              className="flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700/80 transition-all shadow-sm"
+              title="Check Server & Component Connection Status (Ollama, FastAPI, Kokoro, Whisper, GPU)"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <Server className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden lg:inline">Server Status</span>
+            </button>
+
             <button
               onClick={() => setMode(mode === 'exam' ? 'training' : 'exam')}
               className={`hidden md:flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
@@ -202,6 +217,24 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </div>
 
+          </div>
+
+          {/* Diagnostics Launcher Bar */}
+          <div className="max-w-4xl mx-auto mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
+            <div className="flex items-center space-x-2 text-slate-400">
+              <Server className="w-4 h-4 text-indigo-400" />
+              <span>Pipeline Status: FastAPI (8000), Ollama (11434), Whisper, Kokoro & GPU</span>
+            </div>
+            <button
+              onClick={() => {
+                setShowSettings(false);
+                onOpenServerStatus();
+              }}
+              className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold flex items-center space-x-1.5 transition-colors"
+            >
+              <Server className="w-3.5 h-3.5" />
+              <span>Check Component Connections & Diagnostics</span>
+            </button>
           </div>
         </div>
       )}

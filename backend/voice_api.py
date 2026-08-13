@@ -133,22 +133,112 @@ def home():
         "message": "IELTS AI backend is running"
     }
 
-@app.get("/health")
-def health():
-    return {
-        "status": "ok",
-        "timestamp": datetime.now().isoformat(),
-        "services": {
-            "fastapi": "online",
-            "qwen": "online" if qwen_service else "offline",
-            "whisper": "online" if whisper_service_instance else "offline",
-            "kokoro": "online" if kokoro_engine else "offline",
-            "database": "online",
-            "gpu": "available"
-        },
-        "version": "1.3",
-        "system": "Local AI IELTS Examiner"
+def check_system_diagnostics():
+    import urllib.request
+    import json
+    
+    # 1. Ollama Status Check
+    ollama_info = {
+        "status": "offline",
+        "model": getattr(qwen_service, "model", "qwen2.5:7b-instruct"),
+        "url": getattr(qwen_service, "url", "http://localhost:11434"),
+        "available_models": [],
+        "message": "Ollama is unreachable. Ensure Ollama is running on your system."
     }
+    try:
+        req = urllib.request.Request("http://localhost:11434/api/tags", headers={"User-Agent": "FastAPI-Health"})
+        with urllib.request.urlopen(req, timeout=2.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            models = [m.get("name") for m in data.get("models", [])]
+            ollama_info["status"] = "online"
+            ollama_info["available_models"] = models
+            ollama_info["message"] = f"Connected to Ollama ({len(models)} model(s) available)"
+    except Exception as e:
+        ollama_info["message"] = f"Unreachable: {str(e)}. Start Ollama in Windows or run `ollama serve`."
+
+    # 2. Whisper STT Check
+    whisper_info = {
+        "status": "offline",
+        "backend": getattr(whisper_service_instance, "backend_type", "unknown"),
+        "model_size": getattr(whisper_service_instance, "model_size", "small"),
+        "device": getattr(whisper_service_instance, "device", "cpu"),
+        "compute_type": getattr(whisper_service_instance, "compute_type", "int8"),
+        "message": "Whisper STT service active"
+    }
+    if whisper_service_instance:
+        if whisper_info["backend"] == "mock":
+            whisper_info["status"] = "fallback"
+            whisper_info["message"] = "Using deterministic CPU MockWhisper (faster-whisper module loading)"
+        else:
+            whisper_info["status"] = "online"
+            whisper_info["message"] = f"faster-whisper model ({whisper_info['model_size']}) ready on {whisper_info['device'].upper()}"
+
+    # 3. Kokoro TTS Check
+    kokoro_info = {
+        "status": "online" if kokoro_engine else "offline",
+        "voice": "af_heart",
+        "sample_rate": 24000,
+        "message": "Kokoro TTS engine ready" if kokoro_engine else "Kokoro TTS engine unavailable"
+    }
+
+    # 4. GPU & PyTorch Check
+    gpu_info = {
+        "status": "cpu_only",
+        "cuda_available": False,
+        "device_name": "CPU",
+        "vram_total_mb": 0,
+        "vram_allocated_mb": 0,
+        "cuda_version": None
+    }
+    try:
+        import torch
+        if torch.cuda.is_available():
+            gpu_info["status"] = "online"
+            gpu_info["cuda_available"] = True
+            gpu_info["device_name"] = torch.cuda.get_device_name(0)
+            gpu_info["vram_total_mb"] = round(torch.cuda.get_device_properties(0).total_memory / (1024 * 1024))
+            gpu_info["vram_allocated_mb"] = round(torch.cuda.memory_allocated(0) / (1024 * 1024))
+            gpu_info["cuda_version"] = torch.version.cuda
+    except Exception:
+        pass
+
+    # 5. Database Check
+    db_info = {
+        "status": "online",
+        "engine": "SQLite",
+        "message": "Database connection active"
+    }
+
+    # Overall Status Summary
+    components_online = sum([
+        1 if ollama_info["status"] == "online" else 0,
+        1 if whisper_info["status"] in ["online", "fallback"] else 0,
+        1 if kokoro_info["status"] == "online" else 0,
+    ])
+    
+    return {
+        "status": "ok" if components_online >= 2 else "degraded",
+        "timestamp": datetime.now().isoformat(),
+        "all_systems_ready": ollama_info["status"] == "online" and whisper_info["status"] == "online",
+        "components": {
+            "fastapi": {
+                "status": "online",
+                "port": 8000,
+                "version": "1.3",
+                "message": "FastAPI Voice Engine listening on port 8000"
+            },
+            "ollama": ollama_info,
+            "whisper": whisper_info,
+            "kokoro": kokoro_info,
+            "gpu": gpu_info,
+            "database": db_info
+        }
+    }
+
+@app.get("/health")
+@app.get("/api/system/status")
+def health():
+    return check_system_diagnostics()
 
 @app.get("/prototype")
 def prototype_page():

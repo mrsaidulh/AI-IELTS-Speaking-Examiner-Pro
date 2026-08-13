@@ -5,6 +5,7 @@ import { CueCardViewer } from './components/CueCardViewer';
 import { ChatInterface } from './components/ChatInterface';
 import { BandReportView } from './components/BandReportView';
 import { LocalDeploymentGuide } from './components/LocalDeploymentGuide';
+import { ServerStatusModal } from './components/ServerStatusModal';
 import { OFFICIAL_CUE_CARDS } from './data/topics';
 import { TestMode, TestPart, ExaminerAccent, ChatMessage, IELTSEvaluationReport, CueCard } from './types';
 import { Mic, Square, RefreshCw, Volume2, Radio, Sparkles, Activity } from 'lucide-react';
@@ -22,6 +23,7 @@ export default function App() {
   const [accent, setAccent] = useState<ExaminerAccent>('british');
   const [targetBand, setTargetBand] = useState<number>(7.5);
   const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [showServerStatusModal, setShowServerStatusModal] = useState<boolean>(false);
 
   const [cueCardIndex, setCueCardIndex] = useState<number>(0);
   const currentCueCard: CueCard = OFFICIAL_CUE_CARDS[cueCardIndex];
@@ -522,6 +524,7 @@ export default function App() {
         setTargetBand={setTargetBand}
         showSettings={showSettings}
         setShowSettings={setShowSettings}
+        onOpenServerStatus={() => setShowServerStatusModal(true)}
       />
 
       {/* Main Content Area */}
@@ -686,6 +689,12 @@ export default function App() {
           <span className="text-slate-600">Local AI Stack: Ollama + Whisper + Kokoro + FastAPI</span>
         </div>
       </footer>
+
+      {/* Server & AI Component Status Modal */}
+      <ServerStatusModal
+        isOpen={showServerStatusModal}
+        onClose={() => setShowServerStatusModal(false)}
+      />
 
     </div>
   );
