@@ -24,8 +24,12 @@ from examiner_prompt import build_examiner_prompt
 from examiner_service import ExaminerService
 from timing_engine import TimingEngine
 from ielts_structure import IELTS_TEST_STRUCTURE
-from database import SessionLocal
-from models import TestSession, Answer
+from database import SessionLocal, engine, Base
+import models
+from models import Student, TestSession, Answer
+
+# Ensure all database tables exist on startup
+Base.metadata.create_all(bind=engine)
 from voice_config import VOICE_CONFIG, PART_LIMITS
 from whisper_service import WhisperService
 from ai_services import whisper_engine, kokoro_engine

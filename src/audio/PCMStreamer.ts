@@ -47,7 +47,11 @@ export class PCMStreamer {
     };
 
     this.source.connect(this.processor);
-    this.processor.connect(this.audioContext.destination);
+    // Connect processor through a zero-gain node to keep ScriptProcessor running without routing mic to speakers
+    const muteGain = this.audioContext.createGain();
+    muteGain.gain.value = 0;
+    this.processor.connect(muteGain);
+    muteGain.connect(this.audioContext.destination);
   }
 
   private floatTo16BitPCM(float32Array: Float32Array): ArrayBuffer {
