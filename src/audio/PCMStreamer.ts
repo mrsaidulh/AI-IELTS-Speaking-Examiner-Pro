@@ -11,14 +11,18 @@ export class PCMStreamer {
     this.websocket = websocket;
   }
 
-  async start(): Promise<void> {
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-      },
-    });
+  async start(existingStream?: MediaStream): Promise<void> {
+    if (existingStream) {
+      this.stream = existingStream;
+    } else {
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
+    }
 
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     this.audioContext = new AudioContextClass();

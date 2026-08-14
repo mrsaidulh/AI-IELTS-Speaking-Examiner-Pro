@@ -59,7 +59,7 @@ export const PART1_TOPICS = [
   {
     category: 'Hometown & Living',
     questions: [
-      'Where is your hometown located?',
+      'Where is your hometown located and what is it like?',
       'What do you like most about living in your city or town?',
       'Has your hometown changed much over the past few years?',
       'Would you recommend visitors to spend time in your hometown?'
@@ -75,12 +75,59 @@ export const PART1_TOPICS = [
     ]
   },
   {
-    category: 'Leisure & Hobbies',
+    category: 'Leisure & Daily Life',
     questions: [
       'What do you enjoy doing in your free time?',
       'Did you have different hobbies when you were younger?',
       'Do you prefer indoor activities or outdoor sports?',
-      'How important is relaxation to maintain work-life balance?'
+      'How important is relaxation to maintain a good work-life balance?'
+    ]
+  }
+];
+
+export const PART3_TOPICS = [
+  {
+    topicId: 'cue-1',
+    cueCardTopic: 'Travel & Journeys',
+    theme: 'Tourism, Cultural Exchange & Transportation',
+    questions: [
+      'How has modern technology transformed the way people travel and experience foreign cultures?',
+      'Do you think international tourism does more to preserve or dilute local cultural traditions?',
+      'Why do some people prefer adventurous solo travel while others prefer guided group tours?',
+      'How might the travel and tourism industry evolve over the next twenty years?'
+    ]
+  },
+  {
+    topicId: 'cue-2',
+    cueCardTopic: 'Inspiring People & Mentorship',
+    theme: 'Leadership, Role Models & Modern Influence',
+    questions: [
+      'What qualities do you believe are essential for a person to be considered a true role model in today’s society?',
+      'How has the rise of social media influencers changed young people’s perception of success and leadership?',
+      'Do you think public figures and celebrities have a moral responsibility to set a good example for the youth?',
+      'In what ways can mentors and teachers motivate students more effectively than parents?'
+    ]
+  },
+  {
+    topicId: 'cue-3',
+    cueCardTopic: 'Technology & Everyday Devices',
+    theme: 'Digital Transformation, Artificial Intelligence & Privacy',
+    questions: [
+      'In what ways has the widespread use of smart devices impacted human interpersonal communication?',
+      'Do you think society is becoming overly dependent on automated algorithms and artificial intelligence?',
+      'What measures should governments take to protect personal privacy in an increasingly digitized world?',
+      'Will future technological breakthroughs eliminate the distinction between work and personal life?'
+    ]
+  },
+  {
+    topicId: 'cue-4',
+    cueCardTopic: 'Environment & Sustainable Habits',
+    theme: 'Global Climate Action, Corporate Responsibility & Conservation',
+    questions: [
+      'Who do you think bears greater responsibility for environmental conservation: individual citizens or multinational corporations?',
+      'How can schools and educational institutions foster genuine environmental awareness in the younger generation?',
+      'Do you believe economic development and environmental sustainability can realistically coexist without conflict?',
+      'What role should international treaties and global cooperation play in addressing climate emergencies?'
     ]
   }
 ];

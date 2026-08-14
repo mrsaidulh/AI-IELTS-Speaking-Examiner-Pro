@@ -294,6 +294,55 @@ Format strictly matching this JSON schema:
     }
   });
 
+  // API Route: Kokoro TTS Audio Stream Proxy
+  app.post(["/api/examiner/voice", "/api/tts"], async (req, res) => {
+    try {
+      const { text = "Where are you from?", voice = "af_heart" } = req.body;
+      
+      // 1. Try FastAPI Kokoro on port 8000
+      try {
+        const fastApiResponse = await fetch("http://127.0.0.1:8000/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, voice }),
+        });
+        if (fastApiResponse.ok) {
+          const audioBuffer = await fastApiResponse.arrayBuffer();
+          res.setHeader("Content-Type", "audio/mpeg");
+          return res.send(Buffer.from(audioBuffer));
+        }
+      } catch (fastApiErr) {
+        // FastAPI unavailable, try Kokoro container
+      }
+
+      // 2. Try Kokoro OpenAI-compatible Docker container on port 8880
+      try {
+        const kokoroContainerResp = await fetch("http://127.0.0.1:8880/v1/audio/speech", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "kokoro",
+            input: text,
+            voice: voice === "british" ? "bf_emma" : "af_heart",
+            response_format: "mp3"
+          }),
+        });
+        if (kokoroContainerResp.ok) {
+          const audioBuffer = await kokoroContainerResp.arrayBuffer();
+          res.setHeader("Content-Type", "audio/mpeg");
+          return res.send(Buffer.from(audioBuffer));
+        }
+      } catch (containerErr) {
+        // Continue to fallback
+      }
+
+      res.status(404).json({ error: "Local Kokoro TTS not reachable on port 8000 or 8880" });
+    } catch (err: any) {
+      console.error("TTS Proxy error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Vite middleware setup for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

@@ -44,7 +44,7 @@ ollama run qwen3:8b`
       code: `mkdir -p ~/ielts-ai/backend && cd ~/ielts-ai/backend
 python3 -m venv venv
 source venv/bin/activate
-pip install faster-whisper fastapi uvicorn python-multipart requests sqlalchemy`
+pip install faster-whisper fastapi "uvicorn[standard]" websockets python-multipart requests sqlalchemy pydantic`
     },
     {
       step: 'Lesson 4',

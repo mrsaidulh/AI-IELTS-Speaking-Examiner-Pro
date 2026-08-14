@@ -1075,6 +1075,51 @@ def examiner_audio():
         filename="examiner.mp3"
     )
 
+class TTSRequest(BaseModel):
+    text: str
+    voice: str = "af_heart"
+    speed: float = 1.0
+
+@app.post("/tts")
+@app.post("/api/tts")
+@app.post("/api/examiner/voice")
+async def synthesize_speech(request: TTSRequest):
+    """
+    Direct high-fidelity Kokoro TTS endpoint.
+    Synthesizes examiner speech and streams audio/mpeg binary directly to frontend.
+    """
+    text = (request.text or "").strip()
+    if not text:
+        text = "Could you please tell me a little about yourself?"
+
+    file_id = uuid.uuid4().hex[:10]
+    out_file = AUDIO_DIR / f"tts_{file_id}.mp3"
+
+    try:
+        if kokoro_engine:
+            kokoro_engine.synthesize(text, str(out_file))
+            if out_file.exists():
+                return FileResponse(
+                    str(out_file),
+                    media_type="audio/mpeg",
+                    filename="examiner_voice.mp3"
+                )
+    except Exception as e:
+        print(f"[TTS Endpoint] Kokoro synthesis exception: {e}")
+
+    # If Kokoro offline, fallback to mock/cached audio if exists
+    if os.path.exists("examiner.mp3"):
+        return FileResponse("examiner.mp3", media_type="audio/mpeg")
+
+    return {"error": "Kokoro TTS engine not available or synthesis failed"}
+
+@app.get("/tts")
+@app.get("/api/tts")
+async def synthesize_speech_get(text: str = "Where are you from?", voice: str = "af_heart"):
+    req = TTSRequest(text=text, voice=voice)
+    return await synthesize_speech(req)
+
+
 
 @app.get("/api/session/{session_id}/report")
 def get_session_report(session_id: str):
