@@ -835,13 +835,17 @@ async def speaking_websocket(websocket: WebSocket, session_id: str | None = None
                         p1_ctrl = get_part1_controller(session_id)
                         await websocket.send_text(json.dumps(p1_ctrl.build_event("session_started")))
 
-                        # Get intro step or next question
-                        intro_step = p1_ctrl.get_next_intro_step()
-                        if intro_step:
-                            q_text = intro_step
+                        client_q = data.get("text") or data.get("question")
+                        if client_q:
+                            q_text = client_q
+                            p1_ctrl.current_question = q_text
                         else:
-                            q_info = p1_ctrl.next_question()
-                            q_text = q_info["question"] if q_info else "Where are you from?"
+                            intro_step = p1_ctrl.get_next_intro_step()
+                            if intro_step:
+                                q_text = intro_step
+                            else:
+                                q_info = p1_ctrl.next_question()
+                                q_text = q_info["question"] if q_info else "Where are you from?"
 
                         await websocket.send_text(json.dumps(p1_ctrl.build_event("examiner_speaking")))
 
@@ -851,7 +855,6 @@ async def speaking_websocket(websocket: WebSocket, session_id: str | None = None
                         try:
                             res = kokoro_engine.synthesize(q_text, str(q_audio_file))
                             if res and os.path.exists(q_audio_file) and os.path.getsize(q_audio_file) > 1024:
-                                shutil.copy(q_audio_file, "examiner.mp3")
                                 has_audio = True
                         except Exception as e:
                             print(f"Intro TTS note: {e}")
@@ -880,9 +883,10 @@ async def speaking_websocket(websocket: WebSocket, session_id: str | None = None
                     elif msg_type == "start_part2":
                         engine.part = 2
                         p2_ctrl = get_part2_controller(session_id)
+                        client_text = data.get("text") or data.get("prompt")
                         card = p2_ctrl.select_cue_card()
 
-                        intro_text = f"Now, in Part 2, I am going to give you a topic and I'd like you to talk about it for one to two minutes. Before you talk, you'll have one minute to think about what you're going to say. Here is your topic: {card['prompt']}"
+                        intro_text = client_text or f"Now, in Part 2, I am going to give you a topic and I'd like you to talk about it for one to two minutes. Before you talk, you'll have one minute to think about what you're going to say. Here is your topic: {card['prompt']}"
 
                         # Synthesize TTS
                         q_audio_file = AUDIO_DIR / f"{session_id}_p2_cue_card.mp3"
@@ -895,10 +899,11 @@ async def speaking_websocket(websocket: WebSocket, session_id: str | None = None
                             print(f"Part 2 TTS note: {e}")
 
                         await websocket.send_text(json.dumps(p2_ctrl.build_event("part2_cue_card", {
-                            "prompt": card["prompt"],
-                            "points": card["points"],
-                            "card_id": card["id"],
-                            "topic": card["topic"]
+                            "prompt": card.get("prompt", intro_text),
+                            "points": card.get("points", []),
+                            "card_id": data.get("cue_card_id", card.get("id")),
+                            "topic": data.get("topic", card.get("topic")),
+                            "text": intro_text
                         })))
 
                         if has_audio and q_audio_file.exists():
@@ -932,9 +937,10 @@ async def speaking_websocket(websocket: WebSocket, session_id: str | None = None
                         engine.part = 3
                         topic_key = data.get("topic", "education")
                         p3_ctrl = get_part3_controller(session_id, topic_key=topic_key)
+                        client_text = data.get("text") or data.get("question")
                         q_data = p3_ctrl.get_first_question()
 
-                        intro_text = f"We've been talking about a topic in Part 2, and now I'd like to discuss with you one or two more general questions related to this. Let's talk about {p3_ctrl.topic_title}. {q_data['question']}"
+                        intro_text = client_text or f"We've been talking about a topic in Part 2, and now I'd like to discuss with you one or two more general questions related to this. Let's talk about {p3_ctrl.topic_title}. {q_data['question']}"
 
                         await websocket.send_text(json.dumps(p3_ctrl.build_event("examiner_speaking")))
 
@@ -948,7 +954,7 @@ async def speaking_websocket(websocket: WebSocket, session_id: str | None = None
                             print(f"Part 3 Intro TTS note: {e}")
 
                         await websocket.send_text(json.dumps(p3_ctrl.build_event("part3_question", {
-                            "question": q_data['question'],
+                            "question": q_data.get('question', intro_text),
                             "text": intro_text,
                             "topic": p3_ctrl.topic_title
                         })))
@@ -1107,7 +1113,7 @@ async def synthesize_speech(request: TTSRequest):
     try:
         if kokoro_engine:
             kokoro_engine.synthesize(text, str(out_file))
-            if out_file.exists():
+            if out_file.exists() and out_file.stat().st_size > 1024:
                 return FileResponse(
                     str(out_file),
                     media_type="audio/mpeg",
@@ -1116,11 +1122,7 @@ async def synthesize_speech(request: TTSRequest):
     except Exception as e:
         print(f"[TTS Endpoint] Kokoro synthesis exception: {e}")
 
-    # If Kokoro offline, fallback to mock/cached audio if exists
-    if os.path.exists("examiner.mp3"):
-        return FileResponse("examiner.mp3", media_type="audio/mpeg")
-
-    return {"error": "Kokoro TTS engine not available or synthesis failed"}
+    raise HTTPException(status_code=503, detail="Kokoro TTS engine not available or synthesis failed for text")
 
 @app.get("/tts")
 @app.get("/api/tts")

@@ -177,7 +177,8 @@ export default function App() {
           const contentType = resp.headers.get('content-type') || '';
           if (contentType.includes('audio') || contentType.includes('octet-stream')) {
             const blob = await resp.blob();
-            if (blob.size > 1024) {
+            // Ensure audio is non-trivial and valid
+            if (blob.size > 2048) {
               const audioUrl = URL.createObjectURL(blob);
               const audio = new Audio(audioUrl);
               currentAudioRef.current = audio;
@@ -205,27 +206,29 @@ export default function App() {
           }
         }
       } catch (err) {
-        // Fallback to next endpoint
+        // Fallback to next endpoint or browser speech
       }
     }
 
-    // High quality natural browser TTS fallback
+    // High quality natural browser TTS fallback - speaks complete full sentence
     await new Promise<void>((resolve) => {
       if (!('speechSynthesis' in window)) {
         setStatus('ready');
         return resolve();
       }
       window.speechSynthesis.cancel();
+
       const utterance = new SpeechSynthesisUtterance(text);
       const targetLang = accent === 'british' ? 'en-GB' : accent === 'australian' ? 'en-AU' : 'en-US';
       utterance.lang = targetLang;
       utterance.rate = 0.95;
       utterance.pitch = 1.0;
 
-      // Select best human sounding natural voice if available (e.g. Google UK English, Natural, Samantha, Daniel)
+      // Select best human sounding natural voice if available
       const voices = window.speechSynthesis.getVoices();
       if (voices && voices.length > 0) {
-        const naturalVoice = voices.find(v => (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Online') || v.name.includes('Premium')) && v.lang.replace('_', '-').startsWith(targetLang)) ||
+        const naturalVoice = voices.find(v => (v.name.includes('Natural') || v.name.includes('Neural') || v.name.includes('Online') || v.name.includes('Premium')) && v.lang.replace('_', '-').startsWith(targetLang)) ||
+                             voices.find(v => v.name.includes('Google') && v.lang.replace('_', '-').startsWith(targetLang)) ||
                              voices.find(v => v.lang.replace('_', '-').startsWith(targetLang)) ||
                              voices.find(v => (v.name.includes('Natural') || v.name.includes('Google')) && v.lang.startsWith('en')) ||
                              voices.find(v => v.lang.startsWith('en')) ||
@@ -235,11 +238,23 @@ export default function App() {
         }
       }
 
+      // Chrome SpeechSynthesis keep-alive interval to prevent 15s freeze
+      const keepAlive = setInterval(() => {
+        if (!window.speechSynthesis.speaking) {
+          clearInterval(keepAlive);
+        } else {
+          window.speechSynthesis.pause();
+          window.speechSynthesis.resume();
+        }
+      }, 5000);
+
       utterance.onend = () => {
+        clearInterval(keepAlive);
         setStatus('ready');
         resolve();
       };
       utterance.onerror = () => {
+        clearInterval(keepAlive);
         setStatus('ready');
         resolve();
       };
@@ -255,16 +270,16 @@ export default function App() {
 
     let nextQuestion = "";
     if (newPart === 'part1') {
-      const p1Questions = PART1_TOPICS[0].questions;
-      const q = p1Questions[0] || "Where is your hometown located and what is it like living there?";
-      nextQuestion = `Good day. Welcome to the IELTS Speaking test. In this first part, I am going to ask you some general questions about yourself. Let's talk about where you live: ${q}`;
+      const topic = activePart1Topics[part1CategoryIndex % activePart1Topics.length] || activePart1Topics[0];
+      const q = topic.questions[0] || "Where is your hometown located and what is it like living there?";
+      nextQuestion = `Good day. Welcome to the IELTS Speaking test. In this first part, I am going to ask you some general questions about yourself. Let's talk about ${topic.category.toLowerCase()}: ${q}`;
     } else if (newPart === 'part2') {
       nextQuestion = `Now in Part 2, I am going to give you a topic and I'd like you to talk about it for one to two minutes. Before you talk, you have one minute to think about what you are going to say, and you can make some notes if you wish. Here is your topic: "${currentCueCard.topic}". You may begin your one-minute preparation now.`;
     } else {
       // Part 3: Analytical, abstract two-way discussion tied to topic
-      const p3Set = PART3_TOPICS[cueCardIndex % PART3_TOPICS.length] || PART3_TOPICS[0];
+      const p3Set = activePart3Topics[part3TopicIndex % activePart3Topics.length] || activePart3Topics[0];
       const q3 = p3Set.questions[0] || "How has modern technology transformed the way people travel and experience foreign cultures?";
-      nextQuestion = `We've been discussing this topic, and now in Part 3, I would like to ask you some broader, more analytical questions related to this theme. Let's consider ${p3Set.cueCardTopic || 'this area'} in general: ${q3}`;
+      nextQuestion = `We've been discussing ${p3Set.cueCardTopic || 'this topic'}, and now in Part 3, I would like to ask you some broader, more analytical questions related to this theme. Let's consider ${p3Set.theme || 'this area'} in general: ${q3}`;
     }
 
     setExaminerText(nextQuestion);
@@ -290,12 +305,14 @@ export default function App() {
 
     playExaminerVoice(nextQuestion);
 
-    // Notify backend WebSocket of part transition if connected
+    // Notify backend WebSocket of part transition with explicit prompt text
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({
         type: newPart === 'part1' ? 'start_part1' : newPart === 'part2' ? 'start_part2' : 'start_part3',
         part: p,
         cue_card_id: currentCueCard.id,
+        text: nextQuestion,
+        question: nextQuestion
       }));
     }
   };
