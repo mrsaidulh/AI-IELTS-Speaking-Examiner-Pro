@@ -200,8 +200,16 @@ def check_system_diagnostics():
             gpu_info["status"] = "online"
             gpu_info["cuda_available"] = True
             gpu_info["device_name"] = torch.cuda.get_device_name(0)
-            gpu_info["vram_total_mb"] = round(torch.cuda.get_device_properties(0).total_memory / (1024 * 1024))
-            gpu_info["vram_allocated_mb"] = round(torch.cuda.memory_allocated(0) / (1024 * 1024))
+            total_mem = torch.cuda.get_device_properties(0).total_memory
+            gpu_info["vram_total_mb"] = round(total_mem / (1024 * 1024))
+            
+            try:
+                free_bytes, total_bytes = torch.cuda.mem_get_info(0)
+                used_bytes = total_bytes - free_bytes
+                gpu_info["vram_allocated_mb"] = round(used_bytes / (1024 * 1024))
+            except Exception:
+                gpu_info["vram_allocated_mb"] = round(torch.cuda.memory_reserved(0) / (1024 * 1024))
+                
             gpu_info["cuda_version"] = torch.version.cuda
     except Exception:
         pass

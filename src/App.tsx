@@ -104,6 +104,25 @@ export default function App() {
   const pcmStreamerRef = useRef<PCMStreamer | null>(null);
   const expectingAudioRef = useRef<boolean>(false);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioPlayTokenRef = useRef<number>(0);
+
+  // Stop and clean up all playing examiner audio across HTMLAudio and SpeechSynthesis
+  const stopAllAudio = () => {
+    audioPlayTokenRef.current += 1;
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+        currentAudioRef.current.src = '';
+      } catch (e) {}
+      currentAudioRef.current = null;
+    }
+    if ('speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {}
+    }
+  };
 
   // Voice Activity Detection (VAD) Hook
   const { isVoiceDetected, audioLevel, startMonitoring, stopMonitoring } = useVAD({
@@ -144,17 +163,8 @@ export default function App() {
   const playExaminerVoice = async (text: string): Promise<void> => {
     if (!text || !text.trim()) return;
 
-    if (currentAudioRef.current) {
-      try {
-        currentAudioRef.current.pause();
-        currentAudioRef.current.currentTime = 0;
-      } catch (e) {}
-      currentAudioRef.current = null;
-    }
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-
+    stopAllAudio();
+    const token = audioPlayTokenRef.current;
     setStatus('speaking');
 
     // Check endpoints for Kokoro natural audio
@@ -173,10 +183,13 @@ export default function App() {
           body: JSON.stringify({ text, voice: voiceName, speed: 1.0 })
         });
 
+        if (token !== audioPlayTokenRef.current) return;
+
         if (resp.ok) {
           const contentType = resp.headers.get('content-type') || '';
           if (contentType.includes('audio') || contentType.includes('octet-stream')) {
             const blob = await resp.blob();
+            if (token !== audioPlayTokenRef.current) return;
             // Ensure audio is non-trivial and valid
             if (blob.size > 2048) {
               const audioUrl = URL.createObjectURL(blob);
@@ -186,18 +199,22 @@ export default function App() {
               await new Promise<void>((resolve) => {
                 audio.onended = () => {
                   URL.revokeObjectURL(audioUrl);
-                  currentAudioRef.current = null;
-                  setStatus('ready');
+                  if (audioPlayTokenRef.current === token) {
+                    currentAudioRef.current = null;
+                    setStatus('ready');
+                  }
                   resolve();
                 };
                 audio.onerror = () => {
                   URL.revokeObjectURL(audioUrl);
-                  currentAudioRef.current = null;
-                  setStatus('ready');
+                  if (audioPlayTokenRef.current === token) {
+                    currentAudioRef.current = null;
+                    setStatus('ready');
+                  }
                   resolve();
                 };
                 audio.play().catch(() => {
-                  setStatus('ready');
+                  if (audioPlayTokenRef.current === token) setStatus('ready');
                   resolve();
                 });
               });
@@ -206,16 +223,20 @@ export default function App() {
           }
         }
       } catch (err) {
-        // Fallback to next endpoint or browser speech
+        if (token !== audioPlayTokenRef.current) return;
       }
     }
+
+    if (token !== audioPlayTokenRef.current) return;
 
     // High quality natural browser TTS fallback - speaks complete full sentence
     await new Promise<void>((resolve) => {
       if (!('speechSynthesis' in window)) {
-        setStatus('ready');
+        if (audioPlayTokenRef.current === token) setStatus('ready');
         return resolve();
       }
+      if (token !== audioPlayTokenRef.current) return resolve();
+
       window.speechSynthesis.cancel();
 
       const utterance = new SpeechSynthesisUtterance(text);
@@ -250,12 +271,12 @@ export default function App() {
 
       utterance.onend = () => {
         clearInterval(keepAlive);
-        setStatus('ready');
+        if (audioPlayTokenRef.current === token) setStatus('ready');
         resolve();
       };
       utterance.onerror = () => {
         clearInterval(keepAlive);
-        setStatus('ready');
+        if (audioPlayTokenRef.current === token) setStatus('ready');
         resolve();
       };
       window.speechSynthesis.speak(utterance);
@@ -264,6 +285,7 @@ export default function App() {
 
   // Synchronize test part and update distinct examiner questions for Part 1, Part 2, and Part 3
   const handleStageChange = (newPart: TestPart) => {
+    stopAllAudio();
     setCurrentPart(newPart);
     const p = newPart === 'part1' ? 1 : newPart === 'part2' ? 2 : 3;
     setPartNum(p);
@@ -303,9 +325,7 @@ export default function App() {
       return [...filtered, exMsg];
     });
 
-    playExaminerVoice(nextQuestion);
-
-    // Notify backend WebSocket of part transition with explicit prompt text
+    // If WebSocket is open, notify backend to transition and stream the Kokoro audio
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({
         type: newPart === 'part1' ? 'start_part1' : newPart === 'part2' ? 'start_part2' : 'start_part3',
@@ -314,6 +334,9 @@ export default function App() {
         text: nextQuestion,
         question: nextQuestion
       }));
+    } else {
+      // Fallback voice playback if WebSocket is not connected
+      playExaminerVoice(nextQuestion);
     }
   };
 
@@ -402,12 +425,9 @@ export default function App() {
         } else if (event.data instanceof ArrayBuffer && event.data.byteLength > 1024) {
           console.log("Received Kokoro examiner audio binary buffer:", event.data.byteLength, "bytes");
           expectingAudioRef.current = false;
-          if (currentAudioRef.current) {
-            try {
-              currentAudioRef.current.pause();
-            } catch (e) {}
-            currentAudioRef.current = null;
-          }
+          stopAllAudio();
+          const token = audioPlayTokenRef.current;
+          
           const audioBlob = new Blob([event.data], { type: 'audio/mpeg' });
           const audioUrl = URL.createObjectURL(audioBlob);
           const audio = new Audio(audioUrl);
@@ -415,17 +435,22 @@ export default function App() {
           setStatus('speaking');
 
           audio.onended = () => {
-            setStatus('ready');
             URL.revokeObjectURL(audioUrl);
-            currentAudioRef.current = null;
+            if (audioPlayTokenRef.current === token) {
+              currentAudioRef.current = null;
+              setStatus('ready');
+            }
           };
           audio.onerror = () => {
-            setStatus('ready');
-            currentAudioRef.current = null;
+            URL.revokeObjectURL(audioUrl);
+            if (audioPlayTokenRef.current === token) {
+              currentAudioRef.current = null;
+              setStatus('ready');
+            }
           };
           audio.play().catch((err) => {
             console.warn("Kokoro audio autoplay note:", err);
-            setStatus('ready');
+            if (audioPlayTokenRef.current === token) setStatus('ready');
           });
         }
       };
