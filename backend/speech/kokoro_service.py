@@ -190,8 +190,8 @@ class KokoroService:
             is_fallback = True
 
         if is_fallback or not audio_bytes:
-            duration = max(0.8, round(len(text) * 0.075, 2))
-            audio_bytes = self._generate_fallback_wav(text, duration_sec=duration)
+            # If Kokoro backend endpoint is not running, do not generate synthetic sine tone whistle
+            return None
 
         # 3. Cache result
         if self.enable_cache:
@@ -221,14 +221,16 @@ class KokoroService:
             results.append(self.synthesize(sentence))
         return results
 
-    def synthesize_file(self, text: str, output_path: str, voice: Optional[str] = None) -> str:
+    def synthesize_file(self, text: str, output_path: str, voice: Optional[str] = None) -> Optional[str]:
         """
         Synthesizes audio and writes output bytes to output_path.
         """
         result = self.synthesize(text, voice=voice)
-        with open(output_path, "wb") as f:
-            f.write(result.audio_bytes)
-        return output_path
+        if result and getattr(result, 'audio_bytes', None):
+            with open(output_path, "wb") as f:
+                f.write(result.audio_bytes)
+            return output_path
+        return None
 
     def clear_cache(self):
         self._cache.clear()

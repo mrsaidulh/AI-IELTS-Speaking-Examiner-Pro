@@ -605,8 +605,9 @@ async def process_buffered_audio(websocket: WebSocket, session_id: str, engine, 
         q_audio_file = AUDIO_DIR / f"{session_id}_p3_question.mp3"
         has_audio = False
         try:
-            kokoro_engine.synthesize(next_q_text, str(q_audio_file))
-            has_audio = True
+            res = kokoro_engine.synthesize(next_q_text, str(q_audio_file))
+            if res and os.path.exists(q_audio_file) and os.path.getsize(q_audio_file) > 1024:
+                has_audio = True
         except Exception as e:
             print(f"Part 3 TTS synthesis note: {e}")
 
@@ -702,12 +703,13 @@ async def process_buffered_audio(websocket: WebSocket, session_id: str, engine, 
     q_audio_file = AUDIO_DIR / f"{session_id}_question.mp3"
     has_audio = False
     try:
-        kokoro_engine.synthesize(next_question_text, str(q_audio_file))
-        try:
-            shutil.copy(q_audio_file, "examiner.mp3")
-        except Exception:
-            pass
-        has_audio = True
+        res = kokoro_engine.synthesize(next_question_text, str(q_audio_file))
+        if res and os.path.exists(q_audio_file) and os.path.getsize(q_audio_file) > 1024:
+            try:
+                shutil.copy(q_audio_file, "examiner.mp3")
+            except Exception:
+                pass
+            has_audio = True
     except Exception as tts_e:
         print(f"Kokoro TTS synthesis note: {tts_e}")
 
@@ -847,9 +849,10 @@ async def speaking_websocket(websocket: WebSocket, session_id: str | None = None
                         q_audio_file = AUDIO_DIR / f"{session_id}_question.mp3"
                         has_audio = False
                         try:
-                            kokoro_engine.synthesize(q_text, str(q_audio_file))
-                            shutil.copy(q_audio_file, "examiner.mp3")
-                            has_audio = True
+                            res = kokoro_engine.synthesize(q_text, str(q_audio_file))
+                            if res and os.path.exists(q_audio_file) and os.path.getsize(q_audio_file) > 1024:
+                                shutil.copy(q_audio_file, "examiner.mp3")
+                                has_audio = True
                         except Exception as e:
                             print(f"Intro TTS note: {e}")
 
@@ -885,8 +888,9 @@ async def speaking_websocket(websocket: WebSocket, session_id: str | None = None
                         q_audio_file = AUDIO_DIR / f"{session_id}_p2_cue_card.mp3"
                         has_audio = False
                         try:
-                            kokoro_engine.synthesize(intro_text, str(q_audio_file))
-                            has_audio = True
+                            res = kokoro_engine.synthesize(intro_text, str(q_audio_file))
+                            if res and os.path.exists(q_audio_file) and os.path.getsize(q_audio_file) > 1024:
+                                has_audio = True
                         except Exception as e:
                             print(f"Part 2 TTS note: {e}")
 
@@ -937,8 +941,9 @@ async def speaking_websocket(websocket: WebSocket, session_id: str | None = None
                         q_audio_file = AUDIO_DIR / f"{session_id}_p3_intro.mp3"
                         has_audio = False
                         try:
-                            kokoro_engine.synthesize(intro_text, str(q_audio_file))
-                            has_audio = True
+                            res = kokoro_engine.synthesize(intro_text, str(q_audio_file))
+                            if res and os.path.exists(q_audio_file) and os.path.getsize(q_audio_file) > 1024:
+                                has_audio = True
                         except Exception as e:
                             print(f"Part 3 Intro TTS note: {e}")
 

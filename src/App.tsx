@@ -82,13 +82,19 @@ export default function App() {
 
   const [isGeneratingReport, setIsGeneratingReport] = useState<boolean>(false);
 
-  // High-fidelity Kokoro natural voice playback engine
+  // High-fidelity natural voice playback engine
   const playExaminerVoice = async (text: string): Promise<void> => {
     if (!text || !text.trim()) return;
 
     if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+      } catch (e) {}
       currentAudioRef.current = null;
+    }
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
     }
 
     setStatus('speaking');
@@ -113,29 +119,31 @@ export default function App() {
           const contentType = resp.headers.get('content-type') || '';
           if (contentType.includes('audio') || contentType.includes('octet-stream')) {
             const blob = await resp.blob();
-            const audioUrl = URL.createObjectURL(blob);
-            const audio = new Audio(audioUrl);
-            currentAudioRef.current = audio;
+            if (blob.size > 1024) {
+              const audioUrl = URL.createObjectURL(blob);
+              const audio = new Audio(audioUrl);
+              currentAudioRef.current = audio;
 
-            await new Promise<void>((resolve) => {
-              audio.onended = () => {
-                URL.revokeObjectURL(audioUrl);
-                currentAudioRef.current = null;
-                setStatus('ready');
-                resolve();
-              };
-              audio.onerror = () => {
-                URL.revokeObjectURL(audioUrl);
-                currentAudioRef.current = null;
-                setStatus('ready');
-                resolve();
-              };
-              audio.play().catch(() => {
-                setStatus('ready');
-                resolve();
+              await new Promise<void>((resolve) => {
+                audio.onended = () => {
+                  URL.revokeObjectURL(audioUrl);
+                  currentAudioRef.current = null;
+                  setStatus('ready');
+                  resolve();
+                };
+                audio.onerror = () => {
+                  URL.revokeObjectURL(audioUrl);
+                  currentAudioRef.current = null;
+                  setStatus('ready');
+                  resolve();
+                };
+                audio.play().catch(() => {
+                  setStatus('ready');
+                  resolve();
+                });
               });
-            });
-            return;
+              return;
+            }
           }
         }
       } catch (err) {
@@ -143,7 +151,7 @@ export default function App() {
       }
     }
 
-    // Fallback to browser TTS if local Kokoro engine is offline
+    // High quality natural browser TTS fallback
     await new Promise<void>((resolve) => {
       if (!('speechSynthesis' in window)) {
         setStatus('ready');
@@ -151,9 +159,22 @@ export default function App() {
       }
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = accent === 'british' ? 'en-GB' : accent === 'australian' ? 'en-AU' : 'en-US';
-      utterance.rate = 0.92;
+      const targetLang = accent === 'british' ? 'en-GB' : accent === 'australian' ? 'en-AU' : 'en-US';
+      utterance.lang = targetLang;
+      utterance.rate = 0.95;
       utterance.pitch = 1.0;
+
+      // Select natural voice if available
+      const voices = window.speechSynthesis.getVoices();
+      if (voices && voices.length > 0) {
+        const matchVoice = voices.find(v => v.lang.replace('_', '-').startsWith(targetLang)) ||
+                           voices.find(v => v.lang.startsWith('en')) ||
+                           voices[0];
+        if (matchVoice) {
+          utterance.voice = matchVoice;
+        }
+      }
+
       utterance.onend = () => {
         setStatus('ready');
         resolve();
@@ -288,9 +309,15 @@ export default function App() {
           } catch (e) {
             console.log('WebSocket raw message:', event.data);
           }
-        } else if (event.data instanceof ArrayBuffer) {
+        } else if (event.data instanceof ArrayBuffer && event.data.byteLength > 1024) {
           console.log("Received Kokoro examiner audio binary buffer:", event.data.byteLength, "bytes");
           expectingAudioRef.current = false;
+          if (currentAudioRef.current) {
+            try {
+              currentAudioRef.current.pause();
+            } catch (e) {}
+            currentAudioRef.current = null;
+          }
           const audioBlob = new Blob([event.data], { type: 'audio/mpeg' });
           const audioUrl = URL.createObjectURL(audioBlob);
           const audio = new Audio(audioUrl);
