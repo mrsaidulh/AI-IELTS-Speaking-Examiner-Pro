@@ -57,13 +57,16 @@ export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     const saved = localStorage.getItem('ielts_messages');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+      try { 
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
     }
     return [
       {
         id: 'msg-init',
         sender: 'examiner',
-        text: 'Where is your hometown located and what is it like living there?',
+        text: "Good day. Welcome to the IELTS Speaking test. In this first part, I am going to ask you some questions about yourself. Let's start by talking about your hometown: Where is your hometown located, and what is it like living there?",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       },
     ];
@@ -172,13 +175,15 @@ export default function App() {
     let nextQuestion = "";
     if (newPart === 'part1') {
       const p1Questions = PART1_TOPICS[0].questions;
-      nextQuestion = p1Questions[0] || "Where is your hometown located and what is it like living there?";
+      const q = p1Questions[0] || "Where is your hometown located and what is it like living there?";
+      nextQuestion = `Good day. Welcome to the IELTS Speaking test. In this first part, I am going to ask you some general questions about yourself. Let's talk about where you live: ${q}`;
     } else if (newPart === 'part2') {
-      nextQuestion = `Now in Part 2, I am going to give you a topic: "${currentCueCard.topic}". You have 1 minute to prepare your notes and then 2 minutes to speak.`;
+      nextQuestion = `Now in Part 2, I am going to give you a topic and I'd like you to talk about it for one to two minutes. Before you talk, you have one minute to think about what you are going to say, and you can make some notes if you wish. Here is your topic: "${currentCueCard.topic}". You may begin your one-minute preparation now.`;
     } else {
       // Part 3: Analytical, abstract two-way discussion tied to topic
       const p3Set = PART3_TOPICS[cueCardIndex % PART3_TOPICS.length] || PART3_TOPICS[0];
-      nextQuestion = p3Set.questions[0] || "How has modern technology transformed the way people travel and experience foreign cultures?";
+      const q3 = p3Set.questions[0] || "How has modern technology transformed the way people travel and experience foreign cultures?";
+      nextQuestion = `We've been discussing this topic, and now in Part 3, I would like to ask you some broader, more analytical questions related to this theme. Let's consider ${p3Set.cueCardTopic || 'this area'} in general: ${q3}`;
     }
 
     setExaminerText(nextQuestion);
@@ -190,7 +195,18 @@ export default function App() {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setMessages((prev) => [...prev, exMsg]);
+    setMessages((prev) => {
+      // Filter out trailing unanswered examiner questions to prevent duplicate question stacking
+      const filtered = prev.filter((m, idx) => {
+        // Keep candidate answers and their preceding examiner questions
+        if (m.sender === 'candidate') return true;
+        // If this examiner message was answered by the next message, keep it
+        if (idx < prev.length - 1 && prev[idx + 1].sender === 'candidate') return true;
+        return false;
+      });
+      return [...filtered, exMsg];
+    });
+
     playExaminerVoice(nextQuestion);
 
     // Notify backend WebSocket of part transition if connected
@@ -238,14 +254,21 @@ export default function App() {
               };
               setMessages((prev) => [...prev, candMsg]);
             } else if (msg.type === 'question') {
-              setExaminerText(msg.text);
-              const exMsg: ChatMessage = {
-                id: `msg-e-${Date.now()}`,
-                sender: 'examiner',
-                text: msg.text,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              };
-              setMessages((prev) => [...prev, exMsg]);
+              const incomingQ = msg.text?.trim() || "";
+              setExaminerText(incomingQ);
+              setMessages((prev) => {
+                const lastMsg = prev[prev.length - 1];
+                if (lastMsg && lastMsg.sender === 'examiner' && lastMsg.text === incomingQ) {
+                  return prev; // Avoid duplicate bubble
+                }
+                const exMsg: ChatMessage = {
+                  id: `msg-e-${Date.now()}`,
+                  sender: 'examiner',
+                  text: incomingQ,
+                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                };
+                return [...prev, exMsg];
+              });
             } else if (msg.type === 'examiner_audio') {
               expectingAudioRef.current = true;
               setStatus('speaking');
@@ -321,7 +344,6 @@ export default function App() {
         setSessionId(data.session_id);
         if (data.question) {
           setExaminerText(data.question);
-          playExaminerVoice(data.question);
         }
       }
     } catch (err) {
@@ -364,10 +386,16 @@ export default function App() {
       });
 
       // Start VAD Monitoring
-      await startMonitoring(stream, () => {
-        console.log('VAD Triggered: User finished speaking, automatically stopping answer...');
-        stopRecording();
-      });
+      await startMonitoring(
+        stream, 
+        () => {
+          console.log('VAD: User began speaking answer...');
+        },
+        () => {
+          console.log('VAD Triggered: User finished speaking (silence detected), automatically stopping answer...');
+          stopRecording();
+        }
+      );
 
       // Stream raw PCM chunks via WebSocket to backend if available
       if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
@@ -691,7 +719,7 @@ export default function App() {
 
   const handleResetTest = () => {
     const p1Questions = PART1_TOPICS[0].questions;
-    const initialQ = p1Questions[0] || "Where is your hometown located and what is it like living there?";
+    const initialQ = `Good day. Welcome to the IELTS Speaking test. In this first part, I am going to ask you some questions about yourself. Let's start by talking about your hometown: ${p1Questions[0] || "Where is your hometown located and what is it like living there?"}`;
     const initMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       sender: 'examiner',
