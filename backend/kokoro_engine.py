@@ -7,7 +7,7 @@ class KokoroEngine:
         self,
         base_url="http://localhost:8880"
     ):
-        self.service = KokoroService(base_url=base_url)
+        self.service = KokoroService(base_url=base_url, response_format="mp3")
 
     def synthesize(
         self,
