@@ -34,7 +34,7 @@ from voice_config import VOICE_CONFIG, PART_LIMITS
 from whisper_service import WhisperService
 from ai_services import whisper_engine, kokoro_engine
 
-whisper_service_instance = WhisperService(model_size="small", device="cpu", compute_type="int8")
+whisper_service_instance = whisper_engine
 
 from speech_segmenter import SpeechSegmenter
 from speech_state import SpeechState
