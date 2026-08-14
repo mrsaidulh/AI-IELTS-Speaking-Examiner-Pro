@@ -19,6 +19,31 @@ export interface ChatMessage {
   corrections?: CorrectionData;
 }
 
+export interface Part1Topic {
+  category: string;
+  description?: string;
+  questions: string[];
+}
+
+export interface Part3Topic {
+  topicId: string;
+  cueCardTopic: string;
+  theme: string;
+  questions: string[];
+}
+
+export interface QuestionBank {
+  id: string;
+  title: string;
+  version: string;
+  description: string;
+  author?: string;
+  lastUpdated?: string;
+  part1Topics: Part1Topic[];
+  part2CueCards: CueCard[];
+  part3Topics: Part3Topic[];
+}
+
 export interface CueCard {
   id: string;
   topic: string;

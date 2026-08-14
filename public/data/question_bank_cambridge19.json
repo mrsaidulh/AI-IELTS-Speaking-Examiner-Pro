@@ -1,0 +1,116 @@
+{
+  "id": "cambridge-19-academic",
+  "title": "Cambridge IELTS 19 Academic Official Practice Pack",
+  "version": "19.2",
+  "description": "Authentic Cambridge 19 Examination Topics featuring high-frequency questions on education, urban living, historical places, and science.",
+  "author": "Cambridge English Assessment",
+  "lastUpdated": "2026-08-14",
+  "part1Topics": [
+    {
+      "category": "Science & Discoveries",
+      "description": "General interest in natural science and inventions",
+      "questions": [
+        "Did you enjoy learning about science when you were in primary school?",
+        "What is the most interesting scientific invention in your opinion?",
+        "Do you think it is important for everyone to have a basic understanding of science?",
+        "Have you ever visited a science museum or exhibition?"
+      ]
+    },
+    {
+      "category": "Cities & Architecture",
+      "description": "Buildings, public spaces, and urban atmosphere",
+      "questions": [
+        "Do you prefer living in modern buildings or traditional historic houses?",
+        "What is your favorite building in your city, and why do you like it?",
+        "How has architecture in your country changed over the last few decades?",
+        "Do you think old buildings should be preserved or replaced with modern infrastructure?"
+      ]
+    },
+    {
+      "category": "Languages & Communication",
+      "description": "Foreign language learning and conversational habits",
+      "questions": [
+        "How many languages can you speak?",
+        "What do you find most challenging when learning a foreign language?",
+        "Do you prefer sending text messages or having a phone conversation?",
+        "Do you think English will remain the dominant global lingua franca in the future?"
+      ]
+    }
+  ],
+  "part2CueCards": [
+    {
+      "id": "cue-c19-1",
+      "topic": "Describe a historical place or monument you visited",
+      "promptText": "You should say:",
+      "bulletPoints": [
+        "Where this historical place was located",
+        "When and with whom you visited it",
+        "What historical significance or story it had",
+        "And explain how you felt during and after your visit"
+      ],
+      "prepTimeSeconds": 60,
+      "speakTimeSeconds": 120
+    },
+    {
+      "id": "cue-c19-2",
+      "topic": "Describe an important decision you made with the help of others",
+      "promptText": "You should say:",
+      "bulletPoints": [
+        "What the decision was about",
+        "Who helped or advised you in making it",
+        "Why making this decision was difficult for you",
+        "And explain how satisfied you are with the outcome"
+      ],
+      "prepTimeSeconds": 60,
+      "speakTimeSeconds": 120
+    },
+    {
+      "id": "cue-c19-3",
+      "topic": "Describe an outdoor activity or sport you enjoyed recently",
+      "promptText": "You should say:",
+      "bulletPoints": [
+        "What activity or sport it was",
+        "Where and when you participated in it",
+        "Who took part with you",
+        "And explain why you found it enjoyable or refreshing"
+      ],
+      "prepTimeSeconds": 60,
+      "speakTimeSeconds": 120
+    }
+  ],
+  "part3Topics": [
+    {
+      "topicId": "cue-c19-1",
+      "cueCardTopic": "Heritage & Historic Preservation",
+      "theme": "Historical Tourism, National Identity & Cultural Heritage",
+      "questions": [
+        "Why is it important for a nation to protect and preserve its historic monuments?",
+        "Do young people today show as much interest in history as older generations?",
+        "How can modern technology, such as virtual reality, help educate the public about history?",
+        "Should entry to historical monuments and national museums be completely free for citizens?"
+      ]
+    },
+    {
+      "topicId": "cue-c19-2",
+      "cueCardTopic": "Decision Making & Advice",
+      "theme": "Problem Solving, Consultation & Modern Dilemmas",
+      "questions": [
+        "Do you think young people should always consult their parents before making major career choices?",
+        "Why do some individuals struggle with chronic indecisiveness in the modern era?",
+        "How has the availability of big data and online reviews influenced consumer decision making?",
+        "Can artificial intelligence make more objective ethical decisions than human leaders?"
+      ]
+    },
+    {
+      "topicId": "cue-c19-3",
+      "cueCardTopic": "Outdoor Recreation & Well-being",
+      "theme": "Public Health, Urban Green Spaces & Fitness Culture",
+      "questions": [
+        "Why are many modern city dwellers spending less time engaging in outdoor recreation?",
+        "What responsibilities do city municipal governments have in providing public parks and recreational facilities?",
+        "Do you believe team sports teach more valuable life lessons than individual fitness activities?",
+        "How might extreme climate change affect outdoor sporting events globally in the coming decades?"
+      ]
+    }
+  ]
+}

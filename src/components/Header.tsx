@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mic, BarChart3, Server, Settings, Award, Volume2, ShieldAlert } from 'lucide-react';
+import { Mic, BarChart3, Server, Settings, Award, Volume2, ShieldAlert, Database } from 'lucide-react';
 import { TestMode, ExaminerAccent } from '../types';
 
 interface HeaderProps {
@@ -14,6 +14,8 @@ interface HeaderProps {
   showSettings: boolean;
   setShowSettings: (show: boolean) => void;
   onOpenServerStatus: () => void;
+  onOpenQuestionBank: () => void;
+  activeBankTitle?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -28,6 +30,8 @@ export const Header: React.FC<HeaderProps> = ({
   showSettings,
   setShowSettings,
   onOpenServerStatus,
+  onOpenQuestionBank,
+  activeBankTitle,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-slate-100 shadow-md">
@@ -90,8 +94,19 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </nav>
 
-          {/* Mode Switcher & Settings */}
+          {/* Mode Switcher, Question Bank & Settings */}
           <div className="flex items-center space-x-2 sm:space-x-3">
+            {/* Question Bank Loader Button */}
+            <button
+              onClick={onOpenQuestionBank}
+              className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-500/40 transition-all shadow-sm group"
+              title="Question Bank: Load, switch, or import IELTS Part 1, 2, 3 test packs without editing code"
+            >
+              <Database className="w-3.5 h-3.5 text-indigo-400 group-hover:rotate-12 transition-transform" />
+              <span className="hidden xl:inline max-w-[130px] truncate">{activeBankTitle || 'Question Bank'}</span>
+              <span className="xl:hidden">Bank</span>
+            </button>
+
             <button
               onClick={onOpenServerStatus}
               className="flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700/80 transition-all shadow-sm"

@@ -11,8 +11,5 @@ PART_1_CONFIG = {
 }
 
 INTRODUCTION = [
-    "Good morning. My name is the examiner.",
-    "Can you tell me your full name, please?",
-    "What can I call you?",
-    "Can I see your identification, please?"
+    "Good day. Welcome to the IELTS Speaking test. In this first part, I am going to ask you some general questions about yourself. Let's start by talking about where you live: Where is your hometown located, and what is it like living there?"
 ]

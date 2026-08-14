@@ -1,6 +1,6 @@
 import React from 'react';
 import { TestPart } from '../types';
-import { Play, FileText, MessageSquare, Award, Clock } from 'lucide-react';
+import { Play, FileText, MessageSquare, Award, Clock, Database } from 'lucide-react';
 
 interface ExamStageSelectorProps {
   currentPart: TestPart;
@@ -8,6 +8,8 @@ interface ExamStageSelectorProps {
   onResetTest: () => void;
   onFinishTest: () => void;
   messageCount: number;
+  onOpenQuestionBank?: () => void;
+  questionBankTitle?: string;
 }
 
 export const ExamStageSelector: React.FC<ExamStageSelectorProps> = ({
@@ -16,6 +18,8 @@ export const ExamStageSelector: React.FC<ExamStageSelectorProps> = ({
   onResetTest,
   onFinishTest,
   messageCount,
+  onOpenQuestionBank,
+  questionBankTitle,
 }) => {
   const parts: { id: TestPart; title: string; desc: string; icon: any; duration: string }[] = [
     {
@@ -42,7 +46,26 @@ export const ExamStageSelector: React.FC<ExamStageSelectorProps> = ({
   ];
 
   return (
-    <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm mb-6">
+    <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm mb-6 space-y-3">
+      
+      {questionBankTitle && onOpenQuestionBank && (
+        <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5 text-xs">
+          <div className="flex items-center space-x-2">
+            <span className="text-slate-400">Active Test Set:</span>
+            <span className="font-semibold text-indigo-300 flex items-center gap-1.5 bg-indigo-950/40 px-2 py-0.5 rounded-md border border-indigo-500/30">
+              <Database className="w-3 h-3 text-indigo-400" />
+              {questionBankTitle}
+            </span>
+          </div>
+          <button
+            onClick={onOpenQuestionBank}
+            className="text-[11px] text-indigo-400 hover:text-indigo-300 hover:underline font-medium flex items-center gap-1"
+          >
+            Change / Import Bank →
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         
         {/* Stage Buttons */}

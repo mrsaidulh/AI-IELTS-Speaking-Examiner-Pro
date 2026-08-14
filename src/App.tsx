@@ -2,12 +2,28 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { ExamStageSelector } from './components/ExamStageSelector';
 import { CueCardViewer } from './components/CueCardViewer';
+import { Part1StageViewer } from './components/Part1StageViewer';
+import { Part3StageViewer } from './components/Part3StageViewer';
 import { ChatInterface } from './components/ChatInterface';
 import { BandReportView } from './components/BandReportView';
 import { LocalDeploymentGuide } from './components/LocalDeploymentGuide';
 import { ServerStatusModal } from './components/ServerStatusModal';
+import { QuestionBankModal } from './components/QuestionBankModal';
 import { OFFICIAL_CUE_CARDS, PART1_TOPICS, PART3_TOPICS } from './data/topics';
-import { TestMode, TestPart, ExaminerAccent, ChatMessage, IELTSEvaluationReport, CueCard } from './types';
+import { 
+  TestMode, 
+  TestPart, 
+  ExaminerAccent, 
+  ChatMessage, 
+  IELTSEvaluationReport, 
+  CueCard,
+  QuestionBank 
+} from './types';
+import { 
+  loadActiveQuestionBank, 
+  setActiveQuestionBank, 
+  DEFAULT_FALLBACK_BANK 
+} from './services/questionBankLoader';
 import { Mic, Square, RefreshCw, Volume2, Radio, Sparkles, Activity } from 'lucide-react';
 import { useVAD } from './hooks/useVAD';
 import { PCMStreamer } from './audio/PCMStreamer';
@@ -24,9 +40,51 @@ export default function App() {
   const [targetBand, setTargetBand] = useState<number>(7.5);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [showServerStatusModal, setShowServerStatusModal] = useState<boolean>(false);
+  const [showQuestionBankModal, setShowQuestionBankModal] = useState<boolean>(false);
 
+  // Dynamic Question Bank State
+  const [questionBank, setQuestionBank] = useState<QuestionBank>(DEFAULT_FALLBACK_BANK);
   const [cueCardIndex, setCueCardIndex] = useState<number>(0);
-  const currentCueCard: CueCard = OFFICIAL_CUE_CARDS[cueCardIndex] || OFFICIAL_CUE_CARDS[0];
+  const [part1CategoryIndex, setPart1CategoryIndex] = useState<number>(0);
+  const [part3TopicIndex, setPart3TopicIndex] = useState<number>(0);
+
+  const activeCueCards = questionBank.part2CueCards && questionBank.part2CueCards.length > 0 
+    ? questionBank.part2CueCards 
+    : OFFICIAL_CUE_CARDS;
+  const activePart1Topics = questionBank.part1Topics && questionBank.part1Topics.length > 0 
+    ? questionBank.part1Topics 
+    : PART1_TOPICS;
+  const activePart3Topics = questionBank.part3Topics && questionBank.part3Topics.length > 0 
+    ? questionBank.part3Topics 
+    : PART3_TOPICS;
+
+  const currentCueCard: CueCard = activeCueCards[cueCardIndex % activeCueCards.length] || activeCueCards[0];
+
+  // Load Question Bank on startup
+  useEffect(() => {
+    loadActiveQuestionBank().then((loadedBank) => {
+      setQuestionBank(loadedBank);
+    }).catch((err) => {
+      console.warn('Error loading initial question bank:', err);
+    });
+  }, []);
+
+  // Handle Dynamic Question Bank Switch
+  const handleBankChanged = (newBank: QuestionBank) => {
+    setQuestionBank(newBank);
+    setActiveQuestionBank(newBank);
+    setCueCardIndex(0);
+    setPart1CategoryIndex(0);
+    setPart3TopicIndex(0);
+
+    // Update initial prompt if in Part 1
+    if (newBank.part1Topics && newBank.part1Topics.length > 0) {
+      const top = newBank.part1Topics[0];
+      const q = top.questions[0] || "Where is your hometown located and what is it like living there?";
+      const initialText = `In this first part, let's talk about ${top.category.toLowerCase()}: ${q}`;
+      setExaminerText(initialText);
+    }
+  };
 
   // Session & State Machine
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -164,14 +222,16 @@ export default function App() {
       utterance.rate = 0.95;
       utterance.pitch = 1.0;
 
-      // Select natural voice if available
+      // Select best human sounding natural voice if available (e.g. Google UK English, Natural, Samantha, Daniel)
       const voices = window.speechSynthesis.getVoices();
       if (voices && voices.length > 0) {
-        const matchVoice = voices.find(v => v.lang.replace('_', '-').startsWith(targetLang)) ||
-                           voices.find(v => v.lang.startsWith('en')) ||
-                           voices[0];
-        if (matchVoice) {
-          utterance.voice = matchVoice;
+        const naturalVoice = voices.find(v => (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Online') || v.name.includes('Premium')) && v.lang.replace('_', '-').startsWith(targetLang)) ||
+                             voices.find(v => v.lang.replace('_', '-').startsWith(targetLang)) ||
+                             voices.find(v => (v.name.includes('Natural') || v.name.includes('Google')) && v.lang.startsWith('en')) ||
+                             voices.find(v => v.lang.startsWith('en')) ||
+                             voices[0];
+        if (naturalVoice) {
+          utterance.voice = naturalVoice;
         }
       }
 
@@ -274,22 +334,35 @@ export default function App() {
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
               };
               setMessages((prev) => [...prev, candMsg]);
-            } else if (msg.type === 'question') {
-              const incomingQ = msg.text?.trim() || "";
-              setExaminerText(incomingQ);
-              setMessages((prev) => {
-                const lastMsg = prev[prev.length - 1];
-                if (lastMsg && lastMsg.sender === 'examiner' && lastMsg.text === incomingQ) {
-                  return prev; // Avoid duplicate bubble
-                }
-                const exMsg: ChatMessage = {
-                  id: `msg-e-${Date.now()}`,
-                  sender: 'examiner',
-                  text: incomingQ,
-                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                };
-                return [...prev, exMsg];
-              });
+            } else if (msg.type === 'question' || msg.type === 'part3_question' || msg.type === 'part1_question' || msg.type === 'part2_question') {
+              const incomingQ = (msg.text || msg.question || "").trim();
+              if (incomingQ) {
+                setExaminerText(incomingQ);
+                setMessages((prev) => {
+                  const lastMsg = prev[prev.length - 1];
+                  if (lastMsg && lastMsg.sender === 'examiner' && lastMsg.text === incomingQ) {
+                    return prev;
+                  }
+                  // Replace temporary transition placeholder message with verified exact backend text
+                  if (lastMsg && lastMsg.sender === 'examiner' && lastMsg.id.startsWith('msg-stage-')) {
+                    const updated = [...prev];
+                    updated[updated.length - 1] = {
+                      id: `msg-e-${Date.now()}`,
+                      sender: 'examiner',
+                      text: incomingQ,
+                      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    };
+                    return updated;
+                  }
+                  const exMsg: ChatMessage = {
+                    id: `msg-e-${Date.now()}`,
+                    sender: 'examiner',
+                    text: incomingQ,
+                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  };
+                  return [...prev, exMsg];
+                });
+              }
             } else if (msg.type === 'examiner_audio') {
               expectingAudioRef.current = true;
               setStatus('speaking');
@@ -782,6 +855,8 @@ export default function App() {
         showSettings={showSettings}
         setShowSettings={setShowSettings}
         onOpenServerStatus={() => setShowServerStatusModal(true)}
+        onOpenQuestionBank={() => setShowQuestionBankModal(true)}
+        activeBankTitle={questionBank.title}
       />
 
       {/* Main Content Area */}
@@ -798,16 +873,52 @@ export default function App() {
               onResetTest={handleResetTest}
               onFinishTest={handleGenerateReport}
               messageCount={messages.length}
+              onOpenQuestionBank={() => setShowQuestionBankModal(true)}
+              questionBankTitle={questionBank.title}
             />
+
+            {/* Part 1 Stage Viewer */}
+            {currentPart === 'part1' && (
+              <Part1StageViewer
+                topics={activePart1Topics}
+                currentCategoryIndex={part1CategoryIndex}
+                onSelectCategory={(idx) => {
+                  setPart1CategoryIndex(idx);
+                  const topic = activePart1Topics[idx % activePart1Topics.length];
+                  const q = topic.questions[0] || "Where is your hometown located and what is it like living there?";
+                  const fullQ = `In this part, let's talk about ${topic.category.toLowerCase()}: ${q}`;
+                  setExaminerText(fullQ);
+                  const exMsg: ChatMessage = {
+                    id: `msg-p1-${Date.now()}`,
+                    sender: 'examiner',
+                    text: fullQ,
+                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  };
+                  setMessages((prev) => [...prev, exMsg]);
+                  playExaminerVoice(fullQ);
+                }}
+                onAskQuestion={(q) => {
+                  setExaminerText(q);
+                  const exMsg: ChatMessage = {
+                    id: `msg-p1-${Date.now()}`,
+                    sender: 'examiner',
+                    text: q,
+                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  };
+                  setMessages((prev) => [...prev, exMsg]);
+                  playExaminerVoice(q);
+                }}
+              />
+            )}
 
             {/* Cue Card Viewer for Part 2 */}
             {currentPart === 'part2' && (
               <CueCardViewer
                 cueCard={currentCueCard}
                 onSelectNewCard={() => {
-                  const nextIdx = (cueCardIndex + 1) % OFFICIAL_CUE_CARDS.length;
+                  const nextIdx = (cueCardIndex + 1) % activeCueCards.length;
                   setCueCardIndex(nextIdx);
-                  const nextCard = OFFICIAL_CUE_CARDS[nextIdx];
+                  const nextCard = activeCueCards[nextIdx];
                   const q = `Now in Part 2, here is your cue card topic: "${nextCard.topic}". You have 1 minute to prepare your notes and then 2 minutes to speak.`;
                   setExaminerText(q);
                   playExaminerVoice(q);
@@ -816,6 +927,40 @@ export default function App() {
                   const prompt = `Thank you. Please begin speaking now on your topic: ${currentCueCard.topic}.`;
                   setExaminerText(prompt);
                   playExaminerVoice(prompt);
+                }}
+              />
+            )}
+
+            {/* Part 3 Stage Viewer */}
+            {currentPart === 'part3' && (
+              <Part3StageViewer
+                topics={activePart3Topics}
+                currentTopicIndex={part3TopicIndex}
+                onSelectTopic={(idx) => {
+                  setPart3TopicIndex(idx);
+                  const p3Set = activePart3Topics[idx % activePart3Topics.length];
+                  const q3 = p3Set.questions[0] || "How has modern technology transformed the way people travel and experience foreign cultures?";
+                  const fullQ = `We've been talking about ${p3Set.cueCardTopic.toLowerCase()}, and now I'd like to discuss with you one or two more general questions related to this. Let's consider ${p3Set.theme.toLowerCase()} in general: ${q3}`;
+                  setExaminerText(fullQ);
+                  const exMsg: ChatMessage = {
+                    id: `msg-p3-${Date.now()}`,
+                    sender: 'examiner',
+                    text: fullQ,
+                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  };
+                  setMessages((prev) => [...prev, exMsg]);
+                  playExaminerVoice(fullQ);
+                }}
+                onAskQuestion={(q) => {
+                  setExaminerText(q);
+                  const exMsg: ChatMessage = {
+                    id: `msg-p3-${Date.now()}`,
+                    sender: 'examiner',
+                    text: q,
+                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  };
+                  setMessages((prev) => [...prev, exMsg]);
+                  playExaminerVoice(q);
                 }}
               />
             )}
@@ -964,6 +1109,16 @@ export default function App() {
           <span className="text-slate-600">Local AI Stack: Ollama + Whisper + Kokoro + FastAPI</span>
         </div>
       </footer>
+
+      {/* Question Bank Loader Modal */}
+      {showQuestionBankModal && (
+        <QuestionBankModal
+          isOpen={showQuestionBankModal}
+          onClose={() => setShowQuestionBankModal(false)}
+          currentBank={questionBank}
+          onBankChanged={handleBankChanged}
+        />
+      )}
 
       {/* Server Status Modal */}
       {showServerStatusModal && (

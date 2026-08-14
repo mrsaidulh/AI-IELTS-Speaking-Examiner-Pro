@@ -949,7 +949,7 @@ async def speaking_websocket(websocket: WebSocket, session_id: str | None = None
 
                         await websocket.send_text(json.dumps(p3_ctrl.build_event("part3_question", {
                             "question": q_data['question'],
-                            "text": q_data['question'],
+                            "text": intro_text,
                             "topic": p3_ctrl.topic_title
                         })))
 
