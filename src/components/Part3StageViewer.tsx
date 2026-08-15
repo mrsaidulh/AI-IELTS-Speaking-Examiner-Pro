@@ -5,19 +5,23 @@ import { PART3_TOPICS } from '../data/topics';
 
 interface Part3StageViewerProps {
   currentTopicIndex: number;
+  currentQuestionIndex?: number;
   onSelectTopic: (index: number) => void;
-  onAskQuestion: (question: string) => void;
+  onAskQuestion: (question: string, index?: number) => void;
   topics?: Part3Topic[];
 }
 
 export const Part3StageViewer: React.FC<Part3StageViewerProps> = ({
   currentTopicIndex,
+  currentQuestionIndex = 0,
   onSelectTopic,
   onAskQuestion,
   topics = PART3_TOPICS,
 }) => {
   const activeTopics = topics && topics.length > 0 ? topics : PART3_TOPICS;
   const currentSet = activeTopics[currentTopicIndex % activeTopics.length] || activeTopics[0];
+  const totalQuestions = currentSet.questions.length;
+  const clampedQIndex = Math.min(currentQuestionIndex, totalQuestions - 1);
 
   return (
     <div className="bg-gradient-to-br from-slate-900 via-slate-900/90 to-indigo-950/40 border border-indigo-500/30 rounded-2xl p-5 sm:p-6 shadow-xl mb-6 relative overflow-hidden">
@@ -81,24 +85,86 @@ export const Part3StageViewer: React.FC<Part3StageViewerProps> = ({
           </p>
 
           <div className="space-y-2 pt-1">
-            <span className="text-xs font-semibold text-slate-300">Abstract Discussion Questions:</span>
-            <ul className="space-y-1.5">
-              {currentSet.questions.map((q, idx) => (
-                <li key={idx} className="flex items-start justify-between group text-xs text-slate-300 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800 hover:border-indigo-500/50 transition-colors">
-                  <span className="flex items-start space-x-2">
-                    <span className="w-4 h-4 rounded-full bg-indigo-950 text-indigo-300 text-[10px] flex items-center justify-center font-mono border border-indigo-800 shrink-0 mt-0.5">
-                      {idx + 1}
-                    </span>
-                    <span>{q}</span>
-                  </span>
-                  <button
-                    onClick={() => onAskQuestion(q)}
-                    className="opacity-0 group-hover:opacity-100 text-[10px] text-indigo-400 hover:text-indigo-300 bg-slate-800 px-2 py-0.5 rounded border border-slate-700 transition-opacity ml-2 shrink-0"
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-300">
+                Abstract Discussion Questions:
+              </span>
+              <span className="text-[11px] font-mono text-indigo-300 bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-500/30">
+                Question {clampedQIndex + 1} of {totalQuestions}
+              </span>
+            </div>
+
+            {/* Mini Progress Bar */}
+            <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
+              <div
+                className="h-full bg-gradient-to-r from-indigo-500 to-emerald-400 transition-all duration-300"
+                style={{ width: `${Math.min(100, Math.round(((clampedQIndex + 1) / totalQuestions) * 100))}%` }}
+              />
+            </div>
+
+            <ul className="space-y-2 pt-1">
+              {currentSet.questions.map((q, idx) => {
+                const isAnswered = idx < clampedQIndex;
+                const isActive = idx === clampedQIndex;
+
+                return (
+                  <li
+                    key={idx}
+                    className={`flex items-start justify-between group text-xs p-2.5 rounded-xl border transition-all ${
+                      isActive
+                        ? 'bg-indigo-950/70 border-indigo-400/80 shadow-md shadow-indigo-500/15 ring-1 ring-indigo-500/40 text-white font-medium'
+                        : isAnswered
+                        ? 'bg-slate-900/40 border-emerald-500/30 text-slate-300'
+                        : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-indigo-500/50'
+                    }`}
                   >
-                    Practice This
-                  </button>
-                </li>
-              ))}
+                    <span className="flex items-start space-x-2.5 flex-1 pr-2">
+                      {isAnswered ? (
+                        <span className="w-4 h-4 rounded-full bg-emerald-950 text-emerald-300 text-[10px] flex items-center justify-center shrink-0 border border-emerald-700 mt-0.5" title="Answered">
+                          ✓
+                        </span>
+                      ) : isActive ? (
+                        <span className="w-4 h-4 rounded-full bg-indigo-600 text-white text-[10px] flex items-center justify-center font-bold shrink-0 shadow-sm shadow-indigo-500/50 mt-0.5">
+                          {idx + 1}
+                        </span>
+                      ) : (
+                        <span className="w-4 h-4 rounded-full bg-indigo-950 text-indigo-300 text-[10px] flex items-center justify-center font-mono border border-indigo-800 shrink-0 mt-0.5">
+                          {idx + 1}
+                        </span>
+                      )}
+                      
+                      <div className="flex flex-col">
+                        <div className="flex items-center space-x-2">
+                          <span className={isActive ? 'text-white font-semibold' : ''}>{q}</span>
+                          {isActive && (
+                            <span className="text-[9px] uppercase tracking-wider font-bold bg-indigo-500/30 text-indigo-300 border border-indigo-400/40 px-1.5 py-0.2 rounded shrink-0 flex items-center">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse mr-1" />
+                              Active
+                            </span>
+                          )}
+                          {isAnswered && (
+                            <span className="text-[9px] uppercase tracking-wider font-semibold text-emerald-400 shrink-0">
+                              Completed
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </span>
+
+                    <button
+                      onClick={() => onAskQuestion(q, idx)}
+                      className={`text-[10px] px-2 py-0.5 rounded border transition-opacity shrink-0 ${
+                        isActive
+                          ? 'opacity-100 bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-400'
+                          : 'opacity-0 group-hover:opacity-100 text-indigo-400 hover:text-indigo-300 bg-slate-800 border-slate-700'
+                      }`}
+                      title="Direct examiner to ask this question"
+                    >
+                      {isActive ? 'Current' : 'Practice This'}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </div>

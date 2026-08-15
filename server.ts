@@ -184,7 +184,54 @@ RULES:
         }
       } catch (e) {}
 
-      // 3. Smart contextual Cambridge IELTS Question Bank
+      // 3. Try Gemini AI Model (gemini-2.5-flash) if available
+      try {
+        const ai = getAiClient();
+        if (ai) {
+          const formattedHistory = (messages || []).slice(-6).map((m: any) => `${m.sender.toUpperCase()}: ${m.text}`).join("\n");
+          const geminiPrompt = `You are an official IELTS Speaking Examiner.
+Accent / Tone: ${accent} English.
+Test Part: ${testPart}.
+Mode: ${mode}.
+Cue Card Topic (if Part 2/3): ${cueCardTopic || 'N/A'}.
+
+Conversation History:
+${formattedHistory || "None yet. Starting session."}
+
+Candidate just said: "${userSpeech || "I am ready."}"
+
+Task:
+1. Act strictly like an official IELTS examiner.
+2. Formulate only ONE natural, clear, authentic IELTS question or short transition.
+3. ${mode === "training" && userSpeech ? "Provide Band 8.0+ constructive correction for the candidate's speech." : "Set corrections to null."}
+
+Return strictly a JSON object matching this schema:
+{
+  "examinerResponse": "Next examiner question or statement",
+  "corrections": ${mode === "training" && userSpeech ? `{"originalText": "${userSpeech.replace(/"/g, "'")}", "correctedText": "natural Band 8+ version", "grammarIssues": [{"issue": "brief label", "fix": "fix", "explanation": "why"}], "vocabularyUpgrades": [{"original": "word", "upgraded": "advanced collocation", "context": "tip"}], "bandBoostTip": "tip"}` : "null"}
+}`;
+
+          const geminiResp = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: geminiPrompt,
+            config: {
+              responseMimeType: "application/json",
+              temperature: 0.7,
+            },
+          });
+
+          if (geminiResp.text) {
+            const parsed = JSON.parse(geminiResp.text);
+            if (parsed.examinerResponse) {
+              return res.json(parsed);
+            }
+          }
+        }
+      } catch (geminiErr) {
+        console.warn("Gemini API examiner response notice:", geminiErr);
+      }
+
+      // 4. Smart contextual Cambridge IELTS Question Bank
       const p1Pool = [
         "What do you like most about living in your hometown?",
         "Do you work or are you currently a student?",
@@ -331,7 +378,82 @@ Generate a detailed JSON assessment report strictly following this schema:
           }
         }
       } catch (e) {
-        console.warn("Ollama evaluation unavailable, using diagnostic fallback", e);
+        console.warn("Ollama evaluation unavailable, checking Gemini AI...", e);
+      }
+
+      // 2. Try Gemini AI Evaluation Engine (gemini-2.5-flash) if available
+      try {
+        const ai = getAiClient();
+        if (ai) {
+          const geminiEvalPrompt = `You are a Senior Official IELTS Examiner evaluating a candidate's complete Speaking Test.
+Evaluate strictly based on official IELTS 9-band criteria:
+1. Fluency & Coherence
+2. Lexical Resource
+3. Grammatical Range & Accuracy
+4. Pronunciation
+
+Candidate Transcript:
+${formattedTranscript || "Candidate spoke clearly on their personal background, hometown, and related topics."}
+
+Target Band: ${targetBand}
+
+Generate a comprehensive, highly accurate JSON assessment report strictly matching this schema:
+{
+  "candidateName": "${candidateName}",
+  "testDate": "${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}",
+  "targetBand": ${targetBand},
+  "overallBand": 6.5,
+  "scores": {
+    "fluencyScore": 6.5,
+    "lexicalScore": 6.5,
+    "grammarScore": 6.0,
+    "pronunciationScore": 7.0,
+    "overallBand": 6.5,
+    "fluencyFeedback": "Detailed constructive evaluation on fluency, rhythm, and connectives.",
+    "lexicalFeedback": "Detailed evaluation on vocabulary variety, idioms, and collocations.",
+    "grammarFeedback": "Detailed evaluation on grammatical structures, tenses, and accuracy.",
+    "pronunciationFeedback": "Detailed evaluation on pronunciation clarity, intonation, and stress."
+  },
+  "keyStrengths": ["Direct and relevant responses", "Good natural pacing", "Clear syllable articulation"],
+  "priorityImprovements": ["Expand idiomatic collocations", "Incorporate complex subordinate clauses", "Reduce hesitation markers"],
+  "detailedErrors": [
+    {
+      "quote": "original phrase with error or improvement area",
+      "correction": "Band 8.0+ natural alternative",
+      "category": "Grammar | Vocabulary | Fluency",
+      "impact": "Explanation of score impact"
+    }
+  ],
+  "studyPlan": [
+    { "day": 1, "title": "Fluency & Connectors", "focus": "Cohesive devices", "exercise": "Practice cohesive transitions." },
+    { "day": 2, "title": "Cue Card Structure", "focus": "PPF Technique", "exercise": "Structure answers with Past, Present, Future context." },
+    { "day": 3, "title": "Grammar Precision", "focus": "Complex Tenses", "exercise": "Drill complex sentence structures." },
+    { "day": 4, "title": "Lexical Booster", "focus": "Topic Collocations", "exercise": "Learn advanced topic collocations." },
+    { "day": 5, "title": "Part 3 Abstract Analysis", "focus": "Expressing Opinions", "exercise": "Answer analytical questions." },
+    { "day": 6, "title": "Timed Mock Drill", "focus": "Full Test Simulation", "exercise": "Complete full mock simulation." },
+    { "day": 7, "title": "Diagnostic Review", "focus": "Self-recording analysis", "exercise": "Review recordings and errors." }
+  ],
+  "examinerNotes": "Holistic diagnostic summary note."
+}`;
+
+          const geminiEvalResp = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: geminiEvalPrompt,
+            config: {
+              responseMimeType: "application/json",
+              temperature: 0.3,
+            },
+          });
+
+          if (geminiEvalResp.text) {
+            const parsedEval = JSON.parse(geminiEvalResp.text);
+            if (parsedEval.overallBand && parsedEval.scores) {
+              return res.json(parsedEval);
+            }
+          }
+        }
+      } catch (geminiEvalErr) {
+        console.warn("Gemini evaluation error notice:", geminiEvalErr);
       }
 
       // Fallback structured diagnostic report

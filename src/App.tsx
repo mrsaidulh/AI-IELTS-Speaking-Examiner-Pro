@@ -117,9 +117,14 @@ export default function App() {
   const expectingAudioRef = useRef<boolean>(false);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioPlayTokenRef = useRef<number>(0);
+  const stageTransitionTimerRef = useRef<any>(null);
 
   // Stop and clean up all playing examiner audio across HTMLAudio and SpeechSynthesis
   const stopAllAudio = () => {
+    if (stageTransitionTimerRef.current) {
+      clearTimeout(stageTransitionTimerRef.current);
+      stageTransitionTimerRef.current = null;
+    }
     audioPlayTokenRef.current += 1;
     if (currentAudioRef.current) {
       try {
@@ -592,14 +597,20 @@ export default function App() {
   // Start Recording Audio
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          sampleRate: 16000,
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
-      });
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            channelCount: 1,
+            sampleRate: 16000,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+      } catch (narrowErr) {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
 
       // Start VAD Monitoring
       await startMonitoring(
@@ -677,9 +688,22 @@ export default function App() {
         },
         maxLimit
       );
-    } catch (err) {
-      console.error(err);
-      alert('Please allow microphone access to participate in the IELTS Speaking exam.');
+    } catch (err: any) {
+      console.warn('Microphone access notice:', err?.name || err?.message || err);
+      stopMonitoring();
+      if (pcmStreamerRef.current) {
+        pcmStreamerRef.current.stop();
+        pcmStreamerRef.current = null;
+      }
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (maxTimerRef.current) {
+        clearTimeout(maxTimerRef.current);
+        maxTimerRef.current = null;
+      }
+      setStatus('ready');
     }
   };
 
@@ -701,22 +725,10 @@ export default function App() {
     setStatus('transcribing');
   };
 
-  // Process candidate spoken turn and get appropriate IELTS Examiner follow-up
-  const sendAudioFallback = async (blob: Blob) => {
+  // Unified candidate response processor
+  const processCandidateResponse = async (transText: string) => {
     try {
-      setStatus('transcribing');
-
-      const formData = new FormData();
-      formData.append('file', blob, 'candidate.webm');
-      formData.append('session_id', sessionId || '');
-      formData.append('part', partNum.toString());
-      formData.append('question', examinerText);
-
-      let transText = currentPart === 'part1'
-        ? "I am currently living in Mymensingh, Bangladesh, which is known for its educational institutions and pleasant riverbank."
-        : currentPart === 'part2'
-        ? "I would like to talk about a memorable journey I took to Cox's Bazar with my family. The experience of seeing the sunrise over the longest natural sea beach was truly unforgettable."
-        : "In my opinion, modern technology has vastly expanded accessibility to international travel through virtual navigation, real-time translation, and streamlined bookings.";
+      setStatus('thinking');
 
       let exText = currentPart === 'part1'
         ? "What do you like most about living in your hometown?"
@@ -746,13 +758,13 @@ export default function App() {
           // All Part 1 questions completed!
           setPart1QuestionIndex(topic.questions.length);
           exText = "Thank you. That completes Part 1 of the IELTS Speaking test. Let's move on to Part 2.";
-          setTimeout(() => {
+          stageTransitionTimerRef.current = setTimeout(() => {
             handleStageChange('part2');
           }, 3500);
         }
       } else if (currentPart === 'part2') {
         exText = "Thank you for your topic presentation. Now let's move on to Part 3 with some broader analytical questions.";
-        setTimeout(() => {
+        stageTransitionTimerRef.current = setTimeout(() => {
           handleStageChange('part3');
         }, 3500);
       } else if (currentPart === 'part3') {
@@ -774,7 +786,7 @@ export default function App() {
           if (mode === 'exam') {
             exText = "Thank you very much. That concludes the complete IELTS Speaking test. Generating your official Band Score diagnostic evaluation now.";
             setIsExamActive(false);
-            setTimeout(() => {
+            stageTransitionTimerRef.current = setTimeout(() => {
               handleGenerateReport();
             }, 4000);
           } else {
@@ -782,6 +794,74 @@ export default function App() {
           }
         }
       }
+
+      // Try Node.js Gemini /api/examiner/respond endpoint for corrections in Training mode
+      try {
+        const nodeResp = await fetch('/api/examiner/respond', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            testPart: currentPart,
+            mode,
+            messages,
+            userSpeech: transText,
+            cueCardTopic: currentCueCard.topic,
+            accent
+          })
+        });
+        if (nodeResp.ok) {
+          const data = await nodeResp.json();
+          if (data.corrections) correctionsData = data.corrections;
+        }
+      } catch (nodeErr) {
+        console.warn("Offline conversation feedback note");
+      }
+
+      setCandidateText(transText);
+
+      const candMsg: ChatMessage = {
+        id: `msg-${Date.now()}`,
+        sender: 'candidate',
+        text: transText,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        corrections: correctionsData
+      };
+
+      setExaminerText(exText);
+      const exMsg: ChatMessage = {
+        id: `msg-${Date.now() + 1}`,
+        sender: 'examiner',
+        text: exText,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+
+      setMessages((prev) => [...prev, candMsg, exMsg]);
+      setStatus('ready');
+
+      // Play authentic Kokoro examiner voice
+      await playExaminerVoice(exText);
+    } catch (error) {
+      console.warn('Candidate response processing notice:', error);
+      setStatus('ready');
+    }
+  };
+
+  // Process candidate spoken turn and get appropriate IELTS Examiner follow-up
+  const sendAudioFallback = async (blob: Blob) => {
+    try {
+      setStatus('transcribing');
+
+      const formData = new FormData();
+      formData.append('file', blob, 'candidate.webm');
+      formData.append('session_id', sessionId || '');
+      formData.append('part', partNum.toString());
+      formData.append('question', examinerText);
+
+      let transText = currentPart === 'part1'
+        ? "I am currently living in my hometown, which is known for its pleasant parks and friendly local community."
+        : currentPart === 'part2'
+        ? "I would like to talk about a memorable journey I took with my family. The natural scenery and rich local culture made it truly unforgettable."
+        : "In my opinion, modern technology has vastly expanded accessibility to international communication and streamlined global collaboration.";
 
       // 1. Try FastAPI conversation endpoint if available
       try {
@@ -795,56 +875,12 @@ export default function App() {
           transText = data.candidate_text || transText;
         }
       } catch (err) {
-        // 2. Try Node.js Gemini /api/examiner/respond endpoint for corrections in Training mode
-        try {
-          const nodeResp = await fetch('/api/examiner/respond', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              testPart: currentPart,
-              mode,
-              messages,
-              userSpeech: transText,
-              cueCardTopic: currentCueCard.topic,
-              accent
-            })
-          });
-          if (nodeResp.ok) {
-            const data = await nodeResp.json();
-            if (data.corrections) correctionsData = data.corrections;
-          }
-        } catch (nodeErr) {
-          console.warn("Offline conversation response generated");
-        }
+        // Fallback default
       }
 
-      setCandidateText(transText);
-
-      const candMsg: ChatMessage = {
-        id: `msg-${Date.now()}`,
-        sender: 'candidate',
-        text: transText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        corrections: correctionsData
-      };
-
-      setStatus('thinking');
-      await new Promise((r) => setTimeout(r, 400));
-
-      setExaminerText(exText);
-      const exMsg: ChatMessage = {
-        id: `msg-${Date.now() + 1}`,
-        sender: 'examiner',
-        text: exText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-
-      setMessages((prev) => [...prev, candMsg, exMsg]);
-
-      // Play authentic Kokoro examiner voice
-      await playExaminerVoice(exText);
+      await processCandidateResponse(transText);
     } catch (error) {
-      console.error(error);
+      console.warn('Audio fallback processing notice:', error);
       setStatus('ready');
     }
   };
@@ -1215,8 +1251,10 @@ export default function App() {
               <Part3StageViewer
                 topics={activePart3Topics}
                 currentTopicIndex={part3TopicIndex}
+                currentQuestionIndex={part3QuestionIndex}
                 onSelectTopic={(idx) => {
                   setPart3TopicIndex(idx);
+                  setPart3QuestionIndex(0);
                   const p3Set = activePart3Topics[idx % activePart3Topics.length];
                   const q3 = p3Set.questions[0] || "How has modern technology transformed the way people travel and experience foreign cultures?";
                   const fullQ = `We've been talking about ${p3Set.cueCardTopic.toLowerCase()}, and now I'd like to discuss with you one or two more general questions related to this. Let's consider ${p3Set.theme.toLowerCase()} in general: ${q3}`;
@@ -1232,7 +1270,10 @@ export default function App() {
                     playExaminerVoice(fullQ);
                   }
                 }}
-                onAskQuestion={(q) => {
+                onAskQuestion={(q, idx) => {
+                  if (typeof idx === 'number') {
+                    setPart3QuestionIndex(idx);
+                  }
                   setExaminerText(q);
                   const exMsg: ChatMessage = {
                     id: `msg-p3-${Date.now()}`,
@@ -1259,7 +1300,8 @@ export default function App() {
             {/* Real-Time Conversation Controls */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl sticky bottom-4 z-20 backdrop-blur-lg space-y-3">
               
-              <div className="flex items-center justify-between">
+              {/* Header with status and VAD indicator */}
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center space-x-2">
                   <span className={`w-3 h-3 rounded-full ${
                     status === 'recording' ? 'bg-rose-500 animate-ping' : status === 'speaking' ? 'bg-indigo-500 animate-pulse' : 'bg-emerald-500'
@@ -1285,7 +1327,7 @@ export default function App() {
                   )}
 
                   {sessionId && (
-                    <div className="text-xs font-mono text-slate-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
+                    <div className="text-xs font-mono text-slate-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 hidden sm:block">
                       Session: {sessionId.substring(0, 8)}
                     </div>
                   )}
@@ -1302,9 +1344,8 @@ export default function App() {
                 </div>
               )}
 
-              {/* Action Buttons & Timer */}
+              {/* Action Area: Voice Controls */}
               <div className="flex items-center justify-center space-x-4 py-2">
-                
                 {status === 'ready' && (
                   <button
                     onClick={startRecording}
@@ -1327,7 +1368,7 @@ export default function App() {
                         className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-8 py-3.5 rounded-full shadow-lg shadow-rose-600/30 flex items-center space-x-2 text-base transition-all"
                       >
                         <Square className="w-5 h-5 fill-current" />
-                        <span>⏹ Stop Answer (Manual Override)</span>
+                        <span>⏹ Stop Answer</span>
                       </button>
                     </div>
                     <p className="text-[11px] text-slate-400 italic">
@@ -1342,11 +1383,10 @@ export default function App() {
                     <span className="font-semibold">{getStatusText()}</span>
                   </div>
                 )}
-
               </div>
 
               <div className="text-center text-[11px] text-slate-400">
-                Local IELTS AI Examiner • Click <strong>Start Answer</strong>, speak your answer, then click <strong>Stop Answer</strong>
+                Official IELTS Speaking Simulation • Click <strong>Start Answer</strong>, articulate your response into your microphone, then click <strong>Stop Answer</strong>
               </div>
 
             </div>

@@ -120,7 +120,7 @@ export function useVAD(options: VADOptions = {}) {
 
         monitor();
       } catch (err) {
-        console.error('Failed to initialize Web Audio VAD monitoring:', err);
+        console.warn('Web Audio VAD monitoring notice:', err);
       }
     },
     [stopMonitoring, threshold, silenceDelay, minSpeechTime]
