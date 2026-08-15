@@ -115,10 +115,10 @@ RULES:
   "corrections": ${mode === "training" ? `{"originalText": "${userSpeech.replace(/"/g, "'")}", "correctedText": "natural Band 8+ version", "grammarIssues": [{"issue": "brief label", "fix": "fix", "explanation": "why"}], "vocabularyUpgrades": [{"original": "word", "upgraded": "advanced collocation", "context": "tip"}], "bandBoostTip": "tip"}` : "null"}
 }`;
 
-        // Get available model from Ollama
+        // Get available model from Ollama with fast timeout (max 3.5s)
         let targetModel = "qwen2.5:7b-instruct";
         try {
-          const tagsRes = await fetch("http://localhost:11434/api/tags");
+          const tagsRes = await fetch("http://localhost:11434/api/tags", { signal: AbortSignal.timeout(1500) });
           if (tagsRes.ok) {
             const tagData = await tagsRes.json();
             const names = (tagData.models || []).map((m: any) => m.name);
@@ -132,6 +132,7 @@ RULES:
         const ollamaRes = await fetch("http://localhost:11434/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(4000),
           body: JSON.stringify({
             model: targetModel,
             messages: [

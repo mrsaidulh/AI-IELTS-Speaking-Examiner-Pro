@@ -1,6 +1,6 @@
 import React from 'react';
 import { TestPart } from '../types';
-import { Play, FileText, MessageSquare, Award, Clock, Database } from 'lucide-react';
+import { Play, FileText, MessageSquare, Award, Clock, Database, RotateCcw } from 'lucide-react';
 
 interface ExamStageSelectorProps {
   currentPart: TestPart;
@@ -10,6 +10,9 @@ interface ExamStageSelectorProps {
   messageCount: number;
   onOpenQuestionBank?: () => void;
   questionBankTitle?: string;
+  isExamActive?: boolean;
+  onStartExam?: () => void;
+  onStopExam?: () => void;
 }
 
 export const ExamStageSelector: React.FC<ExamStageSelectorProps> = ({
@@ -20,6 +23,9 @@ export const ExamStageSelector: React.FC<ExamStageSelectorProps> = ({
   messageCount,
   onOpenQuestionBank,
   questionBankTitle,
+  isExamActive = false,
+  onStartExam,
+  onStopExam,
 }) => {
   const parts: { id: TestPart; title: string; desc: string; icon: any; duration: string }[] = [
     {
@@ -100,25 +106,56 @@ export const ExamStageSelector: React.FC<ExamStageSelectorProps> = ({
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center space-x-2 sm:space-x-3 self-end md:self-auto">
+        <div className="flex items-center space-x-2 sm:space-x-2.5 self-end md:self-auto">
+          {/* Start / Stop Exam Button */}
+          {isExamActive ? (
+            <button
+              id="btn-start-exam-stage"
+              onClick={onStopExam}
+              className="flex items-center space-x-1.5 px-4 py-2 h-9 sm:h-9.5 rounded-xl text-xs sm:text-sm font-bold bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 transition-all shadow-sm cursor-pointer"
+              title="Stop or pause the active IELTS Speaking examination"
+            >
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+              <span>Stop</span>
+            </button>
+          ) : (
+            <button
+              id="btn-start-exam-stage"
+              onClick={onStartExam}
+              className="flex items-center space-x-1.5 px-4 py-2 h-9 sm:h-9.5 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 shadow-md shadow-emerald-500/20 transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
+              title="Begin official IELTS Speaking test with Examiner"
+            >
+              <Play className="w-3.5 h-3.5 fill-current text-slate-950" />
+              <span>Start</span>
+            </button>
+          )}
+
+          {/* Reset Button */}
           <button
+            id="btn-restart-exam"
             onClick={onResetTest}
-            className="px-3 py-2 text-xs font-medium text-slate-400 hover:text-slate-200 bg-slate-800/80 hover:bg-slate-700/80 rounded-xl border border-slate-700 transition-colors"
+            className="flex items-center space-x-1.5 px-4 py-2 h-9 sm:h-9.5 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 text-emerald-300 border border-emerald-500/40 shadow-sm transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
+            title="Reset speaking exam to Part 1 and clear session history"
           >
-            Restart Test
+            <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Reset</span>
           </button>
 
+          {/* Generate Band Score Button */}
           <button
+            id="btn-generate-report"
             onClick={onFinishTest}
             disabled={messageCount < 2}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-md ${
+            className={`flex items-center space-x-1.5 px-3.5 sm:px-4 py-2 h-9 sm:h-9.5 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-md ${
               messageCount >= 2
-                ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold shadow-amber-500/20'
-                : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-amber-500/20 cursor-pointer'
+                : 'bg-slate-800/60 text-slate-500 border border-slate-800 cursor-not-allowed opacity-60'
             }`}
+            title={messageCount >= 2 ? "Generate comprehensive Cambridge IELTS band score evaluation" : "Speak at least once to generate band report"}
           >
             <Award className="w-4 h-4 text-slate-950" />
-            <span>Generate Band Score</span>
+            <span className="hidden sm:inline">Band Score</span>
+            <span className="sm:hidden">Report</span>
           </button>
         </div>
 

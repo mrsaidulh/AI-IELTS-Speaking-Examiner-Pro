@@ -16,7 +16,7 @@ import {
   ExaminerAccent, 
   ChatMessage, 
   IELTSEvaluationReport, 
-  CueCard,
+  CueCard, 
   QuestionBank 
 } from './types';
 import { 
@@ -24,7 +24,7 @@ import {
   setActiveQuestionBank, 
   DEFAULT_FALLBACK_BANK 
 } from './services/questionBankLoader';
-import { Mic, Square, RefreshCw, Volume2, Radio, Sparkles, Activity } from 'lucide-react';
+import { Mic, Square, RefreshCw, Volume2, Radio, Sparkles, Activity, Play } from 'lucide-react';
 import { useVAD } from './hooks/useVAD';
 import { PCMStreamer } from './audio/PCMStreamer';
 
@@ -87,6 +87,9 @@ export default function App() {
   };
 
   // Session & State Machine
+  const [isExamActive, setIsExamActive] = useState<boolean>(() => {
+    return localStorage.getItem('ielts_exam_active') === 'true';
+  });
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [partNum, setPartNum] = useState<number>(1);
   const [status, setStatus] = useState<ConversationStatus>('ready');
@@ -95,6 +98,10 @@ export default function App() {
     "Where is your hometown located and what is it like living there?"
   );
   const [candidateText, setCandidateText] = useState<string>("");
+
+  useEffect(() => {
+    localStorage.setItem('ielts_exam_active', isExamActive ? 'true' : 'false');
+  }, [isExamActive]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -325,18 +332,20 @@ export default function App() {
       return [...filtered, exMsg];
     });
 
-    // If WebSocket is open, notify backend to transition and stream the Kokoro audio
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({
-        type: newPart === 'part1' ? 'start_part1' : newPart === 'part2' ? 'start_part2' : 'start_part3',
-        part: p,
-        cue_card_id: currentCueCard.id,
-        text: nextQuestion,
-        question: nextQuestion
-      }));
-    } else {
-      // Fallback voice playback if WebSocket is not connected
-      playExaminerVoice(nextQuestion);
+    // If exam is active, notify backend to transition and stream the Kokoro audio
+    if (isExamActive) {
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        socketRef.current.send(JSON.stringify({
+          type: newPart === 'part1' ? 'start_part1' : newPart === 'part2' ? 'start_part2' : 'start_part3',
+          part: p,
+          cue_card_id: currentCueCard.id,
+          text: nextQuestion,
+          question: nextQuestion
+        }));
+      } else {
+        // Fallback voice playback if WebSocket is not connected
+        playExaminerVoice(nextQuestion);
+      }
     }
   };
 
@@ -550,6 +559,7 @@ export default function App() {
 
       // Stream raw PCM chunks via WebSocket to backend if available
       if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        socketRef.current.send(JSON.stringify({ type: 'audio_start' }));
         const streamer = new PCMStreamer(socketRef.current);
         await streamer.start(stream);
         pcmStreamerRef.current = streamer;
@@ -574,10 +584,23 @@ export default function App() {
           timerRef.current = null;
         }
 
-        // If WebSocket is active, WebSocket PCMStreamer handles transcription and response directly.
-        // Otherwise, run HTTP fallback pipeline.
         const isWsActive = socketRef.current && socketRef.current.readyState === WebSocket.OPEN;
-        if (!isWsActive) {
+        if (isWsActive) {
+          try {
+            socketRef.current?.send(JSON.stringify({ type: 'audio_end' }));
+          } catch (e) {}
+
+          // 3.5-second safety timer: if WebSocket transcription hangs or takes too long, auto-trigger fallback
+          setTimeout(() => {
+            setStatus((currentStatus) => {
+              if (currentStatus === 'transcribing') {
+                console.log("WebSocket transcription latency safeguard triggered - falling back to fast pipeline");
+                sendAudioFallback(audioBlob);
+              }
+              return currentStatus;
+            });
+          }, 3500);
+        } else {
           await sendAudioFallback(audioBlob);
         }
       };
@@ -872,9 +895,79 @@ export default function App() {
     setIsGeneratingReport(false);
   };
 
+  // Start Exam when Candidate is ready
+  const handleStartExam = () => {
+    stopAllAudio();
+    setIsExamActive(true);
+
+    let startQuestion = "";
+    if (currentPart === 'part1') {
+      const topic = activePart1Topics[part1CategoryIndex % activePart1Topics.length] || activePart1Topics[0];
+      const q = topic.questions[0] || "Where is your hometown located and what is it like living there?";
+      startQuestion = `Good day. Welcome to the IELTS Speaking test. In this first part, I am going to ask you some general questions about yourself. Let's start by talking about ${topic.category.toLowerCase()}: ${q}`;
+    } else if (currentPart === 'part2') {
+      startQuestion = `Now in Part 2, here is your cue card topic: "${currentCueCard.topic}". You have 1 minute to prepare your notes and then 2 minutes to speak.`;
+    } else {
+      const p3Set = activePart3Topics[part3TopicIndex % activePart3Topics.length] || activePart3Topics[0];
+      const q3 = p3Set.questions[0] || "How has modern technology transformed the way people travel and experience foreign cultures?";
+      startQuestion = `We've been discussing ${p3Set.cueCardTopic || 'this topic'}, and now in Part 3, let's consider ${p3Set.theme || 'this area'} in general: ${q3}`;
+    }
+
+    setExaminerText(startQuestion);
+
+    const exMsg: ChatMessage = {
+      id: `msg-start-${Date.now()}`,
+      sender: 'examiner',
+      text: startQuestion,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    setMessages((prev) => {
+      // If previous messages already have this question, don't duplicate
+      const lastMsg = prev[prev.length - 1];
+      if (lastMsg && lastMsg.sender === 'examiner' && lastMsg.text === startQuestion) {
+        return prev;
+      }
+      return [...prev, exMsg];
+    });
+
+    setStatus('ready');
+
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: currentPart === 'part1' ? 'start_part1' : currentPart === 'part2' ? 'start_part2' : 'start_part3',
+        part: partNum,
+        cue_card_id: currentCueCard.id,
+        text: startQuestion,
+        question: startQuestion
+      }));
+    } else {
+      playExaminerVoice(startQuestion);
+    }
+  };
+
+  // Stop / Pause Exam
+  const handleStopExam = () => {
+    if (status === 'recording') {
+      stopRecording();
+    }
+    stopAllAudio();
+    setIsExamActive(false);
+    setStatus('ready');
+  };
+
   const handleResetTest = () => {
-    const p1Questions = PART1_TOPICS[0].questions;
-    const initialQ = `Good day. Welcome to the IELTS Speaking test. In this first part, I am going to ask you some questions about yourself. Let's start by talking about your hometown: ${p1Questions[0] || "Where is your hometown located and what is it like living there?"}`;
+    stopAllAudio();
+    if (status === 'recording') {
+      stopRecording();
+    }
+    setIsExamActive(false);
+    setPart1CategoryIndex(0);
+    setCueCardIndex(0);
+    setPart3TopicIndex(0);
+    const p1Topic = activePart1Topics[0] || PART1_TOPICS[0];
+    const p1Questions = p1Topic.questions || [];
+    const initialQ = `Good day. Welcome to the IELTS Speaking test. In this first part, I am going to ask you some questions about yourself. Let's start by talking about ${p1Topic.category ? p1Topic.category.toLowerCase() : 'your hometown'}: ${p1Questions[0] || "Where is your hometown located and what is it like living there?"}`;
     const initMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       sender: 'examiner',
@@ -890,8 +983,8 @@ export default function App() {
     setStatus('ready');
     localStorage.removeItem('ielts_messages');
     localStorage.removeItem('ielts_report');
+    localStorage.removeItem('ielts_exam_active');
     createSession();
-    playExaminerVoice(initialQ);
   };
 
   return (
@@ -919,7 +1012,7 @@ export default function App() {
         
         {/* Practice Tab */}
         {activeTab === 'practice' && (
-          <div className="max-w-4xl mx-auto space-y-4">
+          <div className="max-w-4xl mx-auto space-y-5">
             
             {/* Exam Stage Selector */}
             <ExamStageSelector
@@ -930,6 +1023,9 @@ export default function App() {
               messageCount={messages.length}
               onOpenQuestionBank={() => setShowQuestionBankModal(true)}
               questionBankTitle={questionBank.title}
+              isExamActive={isExamActive}
+              onStartExam={handleStartExam}
+              onStopExam={handleStopExam}
             />
 
             {/* Part 1 Stage Viewer */}
@@ -950,7 +1046,9 @@ export default function App() {
                     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                   };
                   setMessages((prev) => [...prev, exMsg]);
-                  playExaminerVoice(fullQ);
+                  if (isExamActive) {
+                    playExaminerVoice(fullQ);
+                  }
                 }}
                 onAskQuestion={(q) => {
                   setExaminerText(q);
@@ -961,7 +1059,9 @@ export default function App() {
                     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                   };
                   setMessages((prev) => [...prev, exMsg]);
-                  playExaminerVoice(q);
+                  if (isExamActive) {
+                    playExaminerVoice(q);
+                  }
                 }}
               />
             )}
@@ -976,12 +1076,16 @@ export default function App() {
                   const nextCard = activeCueCards[nextIdx];
                   const q = `Now in Part 2, here is your cue card topic: "${nextCard.topic}". You have 1 minute to prepare your notes and then 2 minutes to speak.`;
                   setExaminerText(q);
-                  playExaminerVoice(q);
+                  if (isExamActive) {
+                    playExaminerVoice(q);
+                  }
                 }}
                 onStartSpeech={() => {
                   const prompt = `Thank you. Please begin speaking now on your topic: ${currentCueCard.topic}.`;
                   setExaminerText(prompt);
-                  playExaminerVoice(prompt);
+                  if (isExamActive) {
+                    playExaminerVoice(prompt);
+                  }
                 }}
               />
             )}
@@ -1004,7 +1108,9 @@ export default function App() {
                     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                   };
                   setMessages((prev) => [...prev, exMsg]);
-                  playExaminerVoice(fullQ);
+                  if (isExamActive) {
+                    playExaminerVoice(fullQ);
+                  }
                 }}
                 onAskQuestion={(q) => {
                   setExaminerText(q);
@@ -1015,7 +1121,9 @@ export default function App() {
                     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                   };
                   setMessages((prev) => [...prev, exMsg]);
-                  playExaminerVoice(q);
+                  if (isExamActive) {
+                    playExaminerVoice(q);
+                  }
                 }}
               />
             )}
