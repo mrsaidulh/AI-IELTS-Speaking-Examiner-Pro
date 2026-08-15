@@ -34,19 +34,22 @@ type ConversationStatus = 'ready' | 'recording' | 'transcribing' | 'thinking' | 
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'practice' | 'report' | 'guide'>('practice');
-  const [mode, setMode] = useState<TestMode>('exam');
+  const [mode, setMode] = useState<TestMode>('training');
   const [currentPart, setCurrentPart] = useState<TestPart>('part1');
   const [accent, setAccent] = useState<ExaminerAccent>('british');
   const [targetBand, setTargetBand] = useState<number>(7.5);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [showServerStatusModal, setShowServerStatusModal] = useState<boolean>(false);
   const [showQuestionBankModal, setShowQuestionBankModal] = useState<boolean>(false);
+  const [strictTimeRemaining, setStrictTimeRemaining] = useState<number>(270); // 4.5 minutes default for Part 1
 
   // Dynamic Question Bank State
   const [questionBank, setQuestionBank] = useState<QuestionBank>(DEFAULT_FALLBACK_BANK);
   const [cueCardIndex, setCueCardIndex] = useState<number>(0);
   const [part1CategoryIndex, setPart1CategoryIndex] = useState<number>(0);
+  const [part1QuestionIndex, setPart1QuestionIndex] = useState<number>(0);
   const [part3TopicIndex, setPart3TopicIndex] = useState<number>(0);
+  const [part3QuestionIndex, setPart3QuestionIndex] = useState<number>(0);
 
   const activeCueCards = questionBank.part2CueCards && questionBank.part2CueCards.length > 0 
     ? questionBank.part2CueCards 
@@ -75,7 +78,9 @@ export default function App() {
     setActiveQuestionBank(newBank);
     setCueCardIndex(0);
     setPart1CategoryIndex(0);
+    setPart1QuestionIndex(0);
     setPart3TopicIndex(0);
+    setPart3QuestionIndex(0);
 
     // Update initial prompt if in Part 1
     if (newBank.part1Topics && newBank.part1Topics.length > 0) {
@@ -297,8 +302,17 @@ export default function App() {
     const p = newPart === 'part1' ? 1 : newPart === 'part2' ? 2 : 3;
     setPartNum(p);
 
+    if (newPart === 'part1') {
+      setStrictTimeRemaining(270); // 4.5 mins
+    } else if (newPart === 'part2') {
+      setStrictTimeRemaining(180); // 1 min prep + 2 min speech
+    } else if (newPart === 'part3') {
+      setStrictTimeRemaining(270); // 4.5 mins
+    }
+
     let nextQuestion = "";
     if (newPart === 'part1') {
+      setPart1QuestionIndex(0);
       const topic = activePart1Topics[part1CategoryIndex % activePart1Topics.length] || activePart1Topics[0];
       const q = topic.questions[0] || "Where is your hometown located and what is it like living there?";
       nextQuestion = `Good day. Welcome to the IELTS Speaking test. In this first part, I am going to ask you some general questions about yourself. Let's talk about ${topic.category.toLowerCase()}: ${q}`;
@@ -306,6 +320,7 @@ export default function App() {
       nextQuestion = `Now in Part 2, I am going to give you a topic and I'd like you to talk about it for one to two minutes. Before you talk, you have one minute to think about what you are going to say, and you can make some notes if you wish. Here is your topic: "${currentCueCard.topic}". You may begin your one-minute preparation now.`;
     } else {
       // Part 3: Analytical, abstract two-way discussion tied to topic
+      setPart3QuestionIndex(0);
       const p3Set = activePart3Topics[part3TopicIndex % activePart3Topics.length] || activePart3Topics[0];
       const q3 = p3Set.questions[0] || "How has modern technology transformed the way people travel and experience foreign cultures?";
       nextQuestion = `We've been discussing ${p3Set.cueCardTopic || 'this topic'}, and now in Part 3, I would like to ask you some broader, more analytical questions related to this theme. Let's consider ${p3Set.theme || 'this area'} in general: ${q3}`;
@@ -348,6 +363,47 @@ export default function App() {
       }
     }
   };
+
+  // Strict Exam Mode Timers & Automatic Continuous Flow
+  useEffect(() => {
+    if (mode !== 'exam' || !isExamActive) return;
+
+    const timer = setInterval(() => {
+      setStrictTimeRemaining((prev) => {
+        if (prev <= 1) {
+          if (currentPart === 'part1') {
+            // Part 1 time expired -> Auto transition to Part 2
+            const transText = "Thank you. Time for Part 1 has concluded. Let's move on to Part 2.";
+            playExaminerVoice(transText);
+            setTimeout(() => {
+              handleStageChange('part2');
+            }, 3000);
+            return 180;
+          } else if (currentPart === 'part2') {
+            // Part 2 time expired -> Auto transition to Part 3
+            const transText = "Thank you for your topic presentation. Now let's move on to Part 3 with some broader analytical questions.";
+            playExaminerVoice(transText);
+            setTimeout(() => {
+              handleStageChange('part3');
+            }, 3000);
+            return 270;
+          } else if (currentPart === 'part3') {
+            // Part 3 time expired -> Complete exam and auto-generate report
+            setIsExamActive(false);
+            const concludeText = "Thank you very much. That concludes the complete IELTS Speaking test. Generating your official diagnostic evaluation now.";
+            playExaminerVoice(concludeText).finally(() => {
+              handleGenerateReport();
+            });
+            return 0;
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [mode, isExamActive, currentPart]);
 
   // WebSocket connection management with Kokoro audio & real-time protocol
   useEffect(() => {
@@ -670,7 +726,64 @@ export default function App() {
 
       let correctionsData: any = null;
 
-      // 1. First try FastAPI conversation endpoint
+      // 1. Determine structured sequence question based on test part
+      if (currentPart === 'part1') {
+        const topic = activePart1Topics[part1CategoryIndex % activePart1Topics.length] || activePart1Topics[0];
+        const nextQIndex = part1QuestionIndex + 1;
+        
+        if (nextQIndex < topic.questions.length) {
+          setPart1QuestionIndex(nextQIndex);
+          const nextQ = topic.questions[nextQIndex];
+          const connectors = [
+            "Thank you. ",
+            "I see. ",
+            "Alright. ",
+            "Thank you very much. "
+          ];
+          const prefix = connectors[nextQIndex % connectors.length];
+          exText = `${prefix}${nextQ}`;
+        } else {
+          // All Part 1 questions completed!
+          setPart1QuestionIndex(topic.questions.length);
+          exText = "Thank you. That completes Part 1 of the IELTS Speaking test. Let's move on to Part 2.";
+          setTimeout(() => {
+            handleStageChange('part2');
+          }, 3500);
+        }
+      } else if (currentPart === 'part2') {
+        exText = "Thank you for your topic presentation. Now let's move on to Part 3 with some broader analytical questions.";
+        setTimeout(() => {
+          handleStageChange('part3');
+        }, 3500);
+      } else if (currentPart === 'part3') {
+        const p3Set = activePart3Topics[part3TopicIndex % activePart3Topics.length] || activePart3Topics[0];
+        const nextP3Index = part3QuestionIndex + 1;
+        if (nextP3Index < p3Set.questions.length) {
+          setPart3QuestionIndex(nextP3Index);
+          const nextQ = p3Set.questions[nextP3Index];
+          const p3Connectors = [
+            "That's an interesting perspective. ",
+            "Thank you. Considering another aspect, ",
+            "I understand. Moving further, ",
+            "Thank you. "
+          ];
+          const prefix = p3Connectors[nextP3Index % p3Connectors.length];
+          exText = `${prefix}${nextQ}`;
+        } else {
+          setPart3QuestionIndex(p3Set.questions.length);
+          if (mode === 'exam') {
+            exText = "Thank you very much. That concludes the complete IELTS Speaking test. Generating your official Band Score diagnostic evaluation now.";
+            setIsExamActive(false);
+            setTimeout(() => {
+              handleGenerateReport();
+            }, 4000);
+          } else {
+            exText = "Thank you very much. That concludes the complete IELTS Speaking test. You can now click Band Score to inspect your official diagnostic evaluation.";
+          }
+        }
+      }
+
+      // 1. Try FastAPI conversation endpoint if available
       try {
         const response = await fetch(`${API_URL}/conversation`, {
           method: 'POST',
@@ -680,10 +793,9 @@ export default function App() {
         if (response.ok) {
           const data = await response.json();
           transText = data.candidate_text || transText;
-          exText = data.examiner_text || exText;
         }
       } catch (err) {
-        // 2. Try Node.js Gemini /api/examiner/respond endpoint
+        // 2. Try Node.js Gemini /api/examiner/respond endpoint for corrections in Training mode
         try {
           const nodeResp = await fetch('/api/examiner/respond', {
             method: 'POST',
@@ -699,7 +811,6 @@ export default function App() {
           });
           if (nodeResp.ok) {
             const data = await nodeResp.json();
-            if (data.examinerResponse) exText = data.examinerResponse;
             if (data.corrections) correctionsData = data.corrections;
           }
         } catch (nodeErr) {
@@ -963,8 +1074,10 @@ export default function App() {
     }
     setIsExamActive(false);
     setPart1CategoryIndex(0);
+    setPart1QuestionIndex(0);
     setCueCardIndex(0);
     setPart3TopicIndex(0);
+    setPart3QuestionIndex(0);
     const p1Topic = activePart1Topics[0] || PART1_TOPICS[0];
     const p1Questions = p1Topic.questions || [];
     const initialQ = `Good day. Welcome to the IELTS Speaking test. In this first part, I am going to ask you some questions about yourself. Let's start by talking about ${p1Topic.category ? p1Topic.category.toLowerCase() : 'your hometown'}: ${p1Questions[0] || "Where is your hometown located and what is it like living there?"}`;
@@ -1026,6 +1139,8 @@ export default function App() {
               isExamActive={isExamActive}
               onStartExam={handleStartExam}
               onStopExam={handleStopExam}
+              mode={mode}
+              strictTimeRemaining={strictTimeRemaining}
             />
 
             {/* Part 1 Stage Viewer */}
@@ -1033,8 +1148,10 @@ export default function App() {
               <Part1StageViewer
                 topics={activePart1Topics}
                 currentCategoryIndex={part1CategoryIndex}
+                currentQuestionIndex={part1QuestionIndex}
                 onSelectCategory={(idx) => {
                   setPart1CategoryIndex(idx);
+                  setPart1QuestionIndex(0);
                   const topic = activePart1Topics[idx % activePart1Topics.length];
                   const q = topic.questions[0] || "Where is your hometown located and what is it like living there?";
                   const fullQ = `In this part, let's talk about ${topic.category.toLowerCase()}: ${q}`;
@@ -1050,7 +1167,10 @@ export default function App() {
                     playExaminerVoice(fullQ);
                   }
                 }}
-                onAskQuestion={(q) => {
+                onAskQuestion={(q, idx) => {
+                  if (typeof idx === 'number') {
+                    setPart1QuestionIndex(idx);
+                  }
                   setExaminerText(q);
                   const exMsg: ChatMessage = {
                     id: `msg-p1-${Date.now()}`,

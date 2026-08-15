@@ -1,5 +1,5 @@
 import React from 'react';
-import { TestPart } from '../types';
+import { TestPart, TestMode } from '../types';
 import { Play, FileText, MessageSquare, Award, Clock, Database, RotateCcw } from 'lucide-react';
 
 interface ExamStageSelectorProps {
@@ -13,6 +13,8 @@ interface ExamStageSelectorProps {
   isExamActive?: boolean;
   onStartExam?: () => void;
   onStopExam?: () => void;
+  mode?: TestMode;
+  strictTimeRemaining?: number;
 }
 
 export const ExamStageSelector: React.FC<ExamStageSelectorProps> = ({
@@ -26,6 +28,8 @@ export const ExamStageSelector: React.FC<ExamStageSelectorProps> = ({
   isExamActive = false,
   onStartExam,
   onStopExam,
+  mode = 'training',
+  strictTimeRemaining,
 }) => {
   const parts: { id: TestPart; title: string; desc: string; icon: any; duration: string }[] = [
     {
@@ -107,39 +111,77 @@ export const ExamStageSelector: React.FC<ExamStageSelectorProps> = ({
 
         {/* Action Controls */}
         <div className="flex items-center space-x-2 sm:space-x-2.5 self-end md:self-auto">
-          {/* Start / Stop Exam Button */}
-          {isExamActive ? (
-            <button
-              id="btn-start-exam-stage"
-              onClick={onStopExam}
-              className="flex items-center space-x-1.5 px-4 py-2 h-9 sm:h-9.5 rounded-xl text-xs sm:text-sm font-bold bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 transition-all shadow-sm cursor-pointer"
-              title="Stop or pause the active IELTS Speaking examination"
-            >
-              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
-              <span>Stop</span>
-            </button>
-          ) : (
-            <button
-              id="btn-start-exam-stage"
-              onClick={onStartExam}
-              className="flex items-center space-x-1.5 px-4 py-2 h-9 sm:h-9.5 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 shadow-md shadow-emerald-500/20 transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
-              title="Begin official IELTS Speaking test with Examiner"
-            >
-              <Play className="w-3.5 h-3.5 fill-current text-slate-950" />
-              <span>Start</span>
-            </button>
-          )}
+          {mode === 'training' ? (
+            <>
+              {/* Training Mode: Start / Stop Exam Button */}
+              {isExamActive ? (
+                <button
+                  id="btn-start-exam-stage"
+                  onClick={onStopExam}
+                  className="flex items-center space-x-1.5 px-4 py-2 h-9 sm:h-9.5 rounded-xl text-xs sm:text-sm font-bold bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 transition-all shadow-sm cursor-pointer"
+                  title="Stop or pause the active IELTS Speaking examination"
+                >
+                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                  <span>Stop</span>
+                </button>
+              ) : (
+                <button
+                  id="btn-start-exam-stage"
+                  onClick={onStartExam}
+                  className="flex items-center space-x-1.5 px-4 py-2 h-9 sm:h-9.5 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 shadow-md shadow-emerald-500/20 transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
+                  title="Begin IELTS Speaking practice with Examiner"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current text-slate-950" />
+                  <span>Start</span>
+                </button>
+              )}
 
-          {/* Reset Button */}
-          <button
-            id="btn-restart-exam"
-            onClick={onResetTest}
-            className="flex items-center space-x-1.5 px-4 py-2 h-9 sm:h-9.5 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 text-emerald-300 border border-emerald-500/40 shadow-sm transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
-            title="Reset speaking exam to Part 1 and clear session history"
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Reset</span>
-          </button>
+              {/* Training Mode: Reset Button */}
+              <button
+                id="btn-restart-exam"
+                onClick={onResetTest}
+                className="flex items-center space-x-1.5 px-4 py-2 h-9 sm:h-9.5 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 text-emerald-300 border border-emerald-500/40 shadow-sm transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
+                title="Reset speaking exam to Part 1 and clear session history"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Reset</span>
+              </button>
+            </>
+          ) : (
+            /* Strict Exam Mode: Start / Reset buttons are hidden, display strict exam controller */
+            <>
+              {isExamActive ? (
+                <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-1.5 px-3 py-1.5 bg-amber-500/15 border border-amber-500/40 rounded-xl text-amber-300 text-xs font-mono font-bold shadow-sm">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                    <span>Strict Exam:</span>
+                    <span>
+                      {typeof strictTimeRemaining === 'number'
+                        ? `${Math.floor(strictTimeRemaining / 60)}:${(strictTimeRemaining % 60).toString().padStart(2, '0')}`
+                        : 'Active'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={onStopExam}
+                    className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 transition-colors"
+                    title="End strict exam early"
+                  >
+                    End Early
+                  </button>
+                </div>
+              ) : (
+                <button
+                  id="btn-start-strict-exam"
+                  onClick={onStartExam}
+                  className="flex items-center space-x-1.5 px-4 py-2 h-9 sm:h-9.5 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-md shadow-amber-500/20 transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
+                  title="Begin timed continuous IELTS Strict Exam Simulation"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current text-slate-950" />
+                  <span>Begin Official Exam</span>
+                </button>
+              )}
+            </>
+          )}
 
           {/* Generate Band Score Button */}
           <button
