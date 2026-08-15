@@ -6,4 +6,8 @@ class WhisperEngine(WhisperService):
 
     def transcribe_legacy(self, audio_path, language="en"):
         result = self.transcribe(audio_path, language=language)
-        return result["text"]
+        if hasattr(result, "text"):
+            return str(result.text).strip()
+        elif isinstance(result, dict):
+            return str(result.get("text", "")).strip()
+        return str(result).strip()

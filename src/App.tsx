@@ -366,14 +366,23 @@ export default function App() {
               else if (msg.value === 'speaking') setStatus('speaking');
               else if (msg.value === 'ready') setStatus('ready');
             } else if (msg.type === 'transcription' || msg.type === 'transcript') {
-              setCandidateText(msg.text);
-              const candMsg: ChatMessage = {
-                id: `msg-c-${Date.now()}`,
-                sender: 'candidate',
-                text: msg.text,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              };
-              setMessages((prev) => [...prev, candMsg]);
+              const rawText = (msg.text || "").trim();
+              if (rawText) {
+                setCandidateText(rawText);
+                setMessages((prev) => {
+                  const lastMsg = prev[prev.length - 1];
+                  if (lastMsg && lastMsg.sender === 'candidate' && lastMsg.text === rawText) {
+                    return prev;
+                  }
+                  const candMsg: ChatMessage = {
+                    id: `msg-c-${Date.now()}`,
+                    sender: 'candidate',
+                    text: rawText,
+                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  };
+                  return [...prev, candMsg];
+                });
+              }
             } else if (msg.type === 'question' || msg.type === 'part3_question' || msg.type === 'part1_question' || msg.type === 'part2_question') {
               const incomingQ = (msg.text || msg.question || "").trim();
               if (incomingQ) {
@@ -565,8 +574,12 @@ export default function App() {
           timerRef.current = null;
         }
 
-        // Process candidate audio
-        await sendAudioFallback(audioBlob);
+        // If WebSocket is active, WebSocket PCMStreamer handles transcription and response directly.
+        // Otherwise, run HTTP fallback pipeline.
+        const isWsActive = socketRef.current && socketRef.current.readyState === WebSocket.OPEN;
+        if (!isWsActive) {
+          await sendAudioFallback(audioBlob);
+        }
       };
 
       recorder.start(250);

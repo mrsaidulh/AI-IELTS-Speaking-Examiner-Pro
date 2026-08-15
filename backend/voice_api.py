@@ -382,6 +382,33 @@ def start_part2_speaking(session_id: str):
         "remaining": timer.remaining()
     }
 
+def extract_transcript_text(res) -> str:
+    if hasattr(res, "text"):
+        return str(res.text).strip()
+    elif isinstance(res, dict):
+        return str(res.get("text", "")).strip()
+    return str(res).strip()
+
+def extract_transcript_segments(res) -> list:
+    if hasattr(res, "segments"):
+        segs = res.segments
+        out = []
+        for s in segs:
+            if hasattr(s, "model_dump"):
+                out.append(s.model_dump())
+            elif isinstance(s, dict):
+                out.append(s)
+            else:
+                out.append({
+                    "start": getattr(s, "start", 0.0),
+                    "end": getattr(s, "end", 0.0),
+                    "text": getattr(s, "text", "")
+                })
+        return out
+    elif isinstance(res, dict):
+        return res.get("segments", [])
+    return []
+
 @app.post("/conversation")
 async def conversation(
     file: UploadFile = File(...),
@@ -405,7 +432,8 @@ async def conversation(
 
     try:
         converted_file = convert_to_wav(str(input_file), str(wav_file))
-        candidate_text = whisper_engine.transcribe(str(converted_file))
+        res = whisper_engine.transcribe(str(converted_file))
+        candidate_text = extract_transcript_text(res)
 
         current_q = engine.get_current_question()
         current_question_text = current_q["question"] if current_q else question
@@ -528,12 +556,8 @@ async def process_buffered_audio(websocket: WebSocket, session_id: str, engine, 
     start_t = time.perf_counter()
     try:
         res = whisper_engine.transcribe(str(wav_path), language="en")
-        if isinstance(res, dict):
-            transcript = res.get("text", "").strip()
-            segments = res.get("segments", [])
-        else:
-            transcript = str(res).strip()
-            segments = []
+        transcript = extract_transcript_text(res)
+        segments = extract_transcript_segments(res)
     except Exception as e:
         print(f"Whisper transcription error: {e}")
         await websocket.send_text(json.dumps({
