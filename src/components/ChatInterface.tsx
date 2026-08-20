@@ -1,12 +1,14 @@
 import React from 'react';
-import { ChatMessage, TestMode } from '../types';
-import { User, Volume2, Sparkles, CheckCircle, AlertTriangle, ArrowRight, BookOpen } from 'lucide-react';
+import { ChatMessage, TestMode, IELTSEvaluationReport } from '../types';
+import { User, Volume2, Sparkles, CheckCircle, AlertTriangle, ArrowRight, BookOpen, RotateCcw } from 'lucide-react';
+import { HighlightedTranscript } from './HighlightedTranscript';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
   mode: TestMode;
   onPlayMessageVoice: (text: string) => void;
   isLoading: boolean;
+  evaluationReport?: IELTSEvaluationReport | null;
 }
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -14,6 +16,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   mode,
   onPlayMessageVoice,
   isLoading,
+  evaluationReport,
 }) => {
   return (
     <div className="space-y-4 mb-6">
@@ -55,16 +58,37 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <p className="whitespace-pre-wrap">{msg.text}</p>
+                  <div className="flex-1">
+                    <HighlightedTranscript
+                      text={msg.text}
+                      corrections={msg.corrections}
+                      evaluationReport={evaluationReport}
+                      isCandidate={!isExaminer}
+                    />
+                  </div>
 
                   {isExaminer && (
-                    <button
-                      onClick={() => onPlayMessageVoice(msg.text)}
-                      className="text-slate-400 hover:text-indigo-400 p-1.5 rounded-lg hover:bg-slate-800 transition-colors shrink-0"
-                      title="Play examiner voice audio"
-                    >
-                      <Volume2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center space-x-1 shrink-0">
+                      {mode === 'training' && (
+                        <button
+                          id={`examiner-retry-${msg.id}`}
+                          onClick={() => onPlayMessageVoice(msg.text)}
+                          className="flex items-center space-x-1 text-[11px] text-slate-400 hover:text-indigo-300 px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-700 font-medium"
+                          title="Retry speech synthesis for this question (Training Mode only)"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Retry</span>
+                        </button>
+                      )}
+                      <button
+                        id={`examiner-play-${msg.id}`}
+                        onClick={() => onPlayMessageVoice(msg.text)}
+                        className="text-slate-400 hover:text-indigo-400 p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+                        title="Play examiner voice audio"
+                      >
+                        <Volume2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

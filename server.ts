@@ -92,7 +92,7 @@ async function startServer() {
     try {
       const { testPart = 'part1', mode = 'exam', messages = [], userSpeech = "", cueCardTopic = "", accent = 'British' } = req.body;
 
-      // 1. Try Local Ollama (Qwen2.5 / Qwen3) directly on port 11434
+      // 1. Try Local Ollama (Qwen2.5 / Qwen3) directly on port 11434 if available
       try {
         const formattedHistory = (messages || []).slice(-6).map((m: any) => `${m.sender.toUpperCase()}: ${m.text}`).join("\n");
         const systemPrompt = `You are an official IELTS Speaking Examiner.
@@ -115,10 +115,10 @@ RULES:
   "corrections": ${mode === "training" ? `{"originalText": "${userSpeech.replace(/"/g, "'")}", "correctedText": "natural Band 8+ version", "grammarIssues": [{"issue": "brief label", "fix": "fix", "explanation": "why"}], "vocabularyUpgrades": [{"original": "word", "upgraded": "advanced collocation", "context": "tip"}], "bandBoostTip": "tip"}` : "null"}
 }`;
 
-        // Get available model from Ollama with fast timeout (max 3.5s)
+        // Get available model from Ollama with fast timeout (max 1.5s)
         let targetModel = "qwen2.5:7b-instruct";
         try {
-          const tagsRes = await fetch("http://localhost:11434/api/tags", { signal: AbortSignal.timeout(1500) });
+          const tagsRes = await fetch("http://127.0.0.1:11434/api/tags", { signal: AbortSignal.timeout(1000) });
           if (tagsRes.ok) {
             const tagData = await tagsRes.json();
             const names = (tagData.models || []).map((m: any) => m.name);
@@ -127,12 +127,14 @@ RULES:
               targetModel = matched;
             }
           }
-        } catch (e) {}
+        } catch (e) {
+          // Local Ollama port not active
+        }
 
-        const ollamaRes = await fetch("http://localhost:11434/api/chat", {
+        const ollamaRes = await fetch("http://127.0.0.1:11434/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          signal: AbortSignal.timeout(4000),
+          signal: AbortSignal.timeout(3000),
           body: JSON.stringify({
             model: targetModel,
             messages: [
@@ -163,14 +165,15 @@ RULES:
           }
         }
       } catch (ollamaErr) {
-        console.warn("Local Ollama endpoint error, checking FastAPI backend...", ollamaErr);
+        // Silent fallback when local Ollama is not active
       }
 
       // 2. Try Local FastAPI backend on port 8000
       try {
-        const fastApiRes = await fetch("http://localhost:8000/api/examiner/question", {
+        const fastApiRes = await fetch("http://127.0.0.1:8000/api/examiner/question", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(2000),
           body: JSON.stringify({ part: testPart, history: messages, speech: userSpeech })
         });
         if (fastApiRes.ok) {
@@ -182,9 +185,11 @@ RULES:
             });
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // FastAPI unavailable
+      }
 
-      // 3. Try Gemini AI Model (gemini-2.5-flash) if available
+      // 3. Try Gemini AI Model (gemini-3.7-flash) if available
       try {
         const ai = getAiClient();
         if (ai) {
@@ -211,24 +216,37 @@ Return strictly a JSON object matching this schema:
   "corrections": ${mode === "training" && userSpeech ? `{"originalText": "${userSpeech.replace(/"/g, "'")}", "correctedText": "natural Band 8+ version", "grammarIssues": [{"issue": "brief label", "fix": "fix", "explanation": "why"}], "vocabularyUpgrades": [{"original": "word", "upgraded": "advanced collocation", "context": "tip"}], "bandBoostTip": "tip"}` : "null"}
 }`;
 
-          const geminiResp = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: geminiPrompt,
-            config: {
-              responseMimeType: "application/json",
-              temperature: 0.7,
-            },
-          });
+          let geminiResp;
+          try {
+            geminiResp = await ai.models.generateContent({
+              model: "gemini-3.7-flash",
+              contents: geminiPrompt,
+              config: {
+                responseMimeType: "application/json",
+                temperature: 0.7,
+              },
+            });
+          } catch (mErr) {
+            // Secondary alias fallback
+            geminiResp = await ai.models.generateContent({
+              model: "gemini-flash-latest",
+              contents: geminiPrompt,
+              config: {
+                responseMimeType: "application/json",
+                temperature: 0.7,
+              },
+            });
+          }
 
-          if (geminiResp.text) {
+          if (geminiResp?.text) {
             const parsed = JSON.parse(geminiResp.text);
             if (parsed.examinerResponse) {
               return res.json(parsed);
             }
           }
         }
-      } catch (geminiErr) {
-        console.warn("Gemini API examiner response notice:", geminiErr);
+      } catch (geminiErr: any) {
+        console.warn("Gemini API notice:", geminiErr?.message || geminiErr);
       }
 
       // 4. Smart contextual Cambridge IELTS Question Bank
@@ -354,9 +372,10 @@ Generate a detailed JSON assessment report strictly following this schema:
   "examinerNotes": "Overall performance summary paragraph."
 }`;
 
-        const ollamaEvalRes = await fetch("http://localhost:11434/api/chat", {
+        const ollamaEvalRes = await fetch("http://127.0.0.1:11434/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(3000),
           body: JSON.stringify({
             model: targetModel,
             messages: [
@@ -378,10 +397,10 @@ Generate a detailed JSON assessment report strictly following this schema:
           }
         }
       } catch (e) {
-        console.warn("Ollama evaluation unavailable, checking Gemini AI...", e);
+        // Ollama local unavailable, fallback to Gemini AI
       }
 
-      // 2. Try Gemini AI Evaluation Engine (gemini-2.5-flash) if available
+      // 2. Try Gemini AI Evaluation Engine (gemini-3.7-flash) if available
       try {
         const ai = getAiClient();
         if (ai) {
@@ -436,24 +455,37 @@ Generate a comprehensive, highly accurate JSON assessment report strictly matchi
   "examinerNotes": "Holistic diagnostic summary note."
 }`;
 
-          const geminiEvalResp = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: geminiEvalPrompt,
-            config: {
-              responseMimeType: "application/json",
-              temperature: 0.3,
-            },
-          });
+          let geminiEvalResp;
+          try {
+            geminiEvalResp = await ai.models.generateContent({
+              model: "gemini-3.7-flash",
+              contents: geminiEvalPrompt,
+              config: {
+                responseMimeType: "application/json",
+                temperature: 0.3,
+              },
+            });
+          } catch (mErr) {
+            // Secondary alias fallback
+            geminiEvalResp = await ai.models.generateContent({
+              model: "gemini-flash-latest",
+              contents: geminiEvalPrompt,
+              config: {
+                responseMimeType: "application/json",
+                temperature: 0.3,
+              },
+            });
+          }
 
-          if (geminiEvalResp.text) {
+          if (geminiEvalResp?.text) {
             const parsedEval = JSON.parse(geminiEvalResp.text);
             if (parsedEval.overallBand && parsedEval.scores) {
               return res.json(parsedEval);
             }
           }
         }
-      } catch (geminiEvalErr) {
-        console.warn("Gemini evaluation error notice:", geminiEvalErr);
+      } catch (geminiEvalErr: any) {
+        console.warn("Gemini evaluation notice:", geminiEvalErr?.message || geminiEvalErr);
       }
 
       // Fallback structured diagnostic report

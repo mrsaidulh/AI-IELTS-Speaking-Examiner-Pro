@@ -26,6 +26,7 @@ import {
 } from './services/questionBankLoader';
 import { Mic, Square, RefreshCw, Volume2, Radio, Sparkles, Activity, Play } from 'lucide-react';
 import { useVAD } from './hooks/useVAD';
+import { AudioWaveformVisualizer } from './components/AudioWaveformVisualizer';
 import { PCMStreamer } from './audio/PCMStreamer';
 
 const API_URL = "http://localhost:8000";
@@ -118,6 +119,29 @@ export default function App() {
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioPlayTokenRef = useRef<number>(0);
   const stageTransitionTimerRef = useRef<any>(null);
+  const speechRecognitionRef = useRef<any>(null);
+  const liveSpeechTranscriptRef = useRef<string>('');
+
+  // Silence and noise token filter to prevent phantom STT hallucinations
+  const isSilenceOrNoise = (text: string): boolean => {
+    if (!text) return true;
+    const trimmed = text.trim();
+    if (!trimmed) return true;
+    
+    // Strip leading/trailing punctuation and lowercase
+    const clean = trimmed.toLowerCase().replace(/^[.,/#!$%^&*;:{}=\-_`~()?"'…\s]+|[.,/#!$%^&*;:{}=\-_`~()?"'…\s]+$/g, '').trim();
+    if (!clean || clean.length < 2) return true;
+
+    const silenceTokens = [
+      'blank_audio', '[blank_audio]', '(silence)', '[silence]', 'silence',
+      'silence.', '[noise]', '(noise)', '[music]', '(music)', '[applause]',
+      '(laughter)', '...', '..', '--', 'thank you', 'thank you.', 'thanks.',
+      'you', 'bye', 'subscribe', 'subtitles by'
+    ];
+
+    if (silenceTokens.includes(clean)) return true;
+    return false;
+  };
 
   // Stop and clean up all playing examiner audio across HTMLAudio and SpeechSynthesis
   const stopAllAudio = () => {
@@ -142,7 +166,7 @@ export default function App() {
   };
 
   // Voice Activity Detection (VAD) Hook
-  const { isVoiceDetected, audioLevel, startMonitoring, stopMonitoring } = useVAD({
+  const { isVoiceDetected, audioLevel, analyserNode, silenceProgress, startMonitoring, stopMonitoring } = useVAD({
     threshold: 0.02,
     silenceDelay: 1500,
     minSpeechTime: 300,
@@ -437,7 +461,7 @@ export default function App() {
               else if (msg.value === 'ready') setStatus('ready');
             } else if (msg.type === 'transcription' || msg.type === 'transcript') {
               const rawText = (msg.text || "").trim();
-              if (rawText) {
+              if (rawText && !isSilenceOrNoise(rawText)) {
                 setCandidateText(rawText);
                 setMessages((prev) => {
                   const lastMsg = prev[prev.length - 1];
@@ -452,7 +476,13 @@ export default function App() {
                   };
                   return [...prev, candMsg];
                 });
+              } else {
+                console.log("WebSocket returned empty transcript or silence - prompting clarification");
+                handleSilenceClarification();
               }
+            } else if (msg.type === 'silence' || msg.type === 'empty_audio' || msg.type === 'no_speech') {
+              console.log("WebSocket silence event - prompting clarification");
+              handleSilenceClarification();
             } else if (msg.type === 'question' || msg.type === 'part3_question' || msg.type === 'part1_question' || msg.type === 'part2_question') {
               const incomingQ = (msg.text || msg.question || "").trim();
               if (incomingQ) {
@@ -594,9 +624,68 @@ export default function App() {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  // Clarification prompt when candidate is silent or empty audio is received
+  const handleSilenceClarification = async () => {
+    stopAllAudio();
+    setStatus('speaking');
+
+    const clarifyPrompt = "I didn't catch your answer. Please speak clearly into the microphone.";
+    setExaminerText(clarifyPrompt);
+
+    const exMsg: ChatMessage = {
+      id: `msg-clarify-${Date.now()}`,
+      sender: 'examiner',
+      text: clarifyPrompt,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.sender === 'examiner' && last.text === clarifyPrompt) {
+        return prev;
+      }
+      return [...prev, exMsg];
+    });
+
+    await playExaminerVoice(clarifyPrompt);
+    setStatus('ready');
+  };
+
   // Start Recording Audio
   const startRecording = async () => {
     try {
+      liveSpeechTranscriptRef.current = '';
+
+      // Start Browser SpeechRecognition in parallel if available
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        try {
+          const rec = new SpeechRecognition();
+          rec.continuous = true;
+          rec.interimResults = true;
+          rec.lang = 'en-US';
+          rec.onresult = (event: any) => {
+            let combined = '';
+            for (let i = 0; i < event.results.length; i++) {
+              combined += event.results[i][0].transcript + ' ';
+            }
+            if (combined.trim()) {
+              liveSpeechTranscriptRef.current = combined.trim();
+            }
+          };
+          rec.onerror = (errEvent: any) => {
+            console.warn('Browser SpeechRecognition notice:', errEvent.error);
+          };
+          rec.onend = () => {
+            speechRecognitionRef.current = null;
+          };
+          rec.start();
+          speechRecognitionRef.current = rec;
+        } catch (recErr) {
+          console.warn('SpeechRecognition start notice:', recErr);
+        }
+      }
+
       let stream: MediaStream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -612,8 +701,8 @@ export default function App() {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
 
-      // Start VAD Monitoring
-      await startMonitoring(
+      // Start VAD Monitoring with AudioContext Gain Normalization Pipeline
+      const processedStream = await startMonitoring(
         stream, 
         () => {
           console.log('VAD: User began speaking answer...');
@@ -624,16 +713,18 @@ export default function App() {
         }
       );
 
-      // Stream raw PCM chunks via WebSocket to backend if available
+      const activeRecordStream = processedStream || stream;
+
+      // Stream raw normalized PCM chunks via WebSocket to backend if available
       if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
         socketRef.current.send(JSON.stringify({ type: 'audio_start' }));
         const streamer = new PCMStreamer(socketRef.current);
-        await streamer.start(stream);
+        await streamer.start(activeRecordStream);
         pcmStreamerRef.current = streamer;
       }
 
       audioChunksRef.current = [];
-      const recorder = new MediaRecorder(stream);
+      const recorder = new MediaRecorder(activeRecordStream);
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (event) => {
@@ -661,7 +752,7 @@ export default function App() {
           setTimeout(() => {
             setStatus((currentStatus) => {
               if (currentStatus === 'transcribing') {
-                console.log("WebSocket transcription latency safeguard triggered - falling back to fast pipeline");
+                console.log("WebSocket transcription latency safeguard triggered - evaluating transcript / audio");
                 sendAudioFallback(audioBlob);
               }
               return currentStatus;
@@ -691,6 +782,10 @@ export default function App() {
     } catch (err: any) {
       console.warn('Microphone access notice:', err?.name || err?.message || err);
       stopMonitoring();
+      if (speechRecognitionRef.current) {
+        try { speechRecognitionRef.current.stop(); } catch (e) {}
+        speechRecognitionRef.current = null;
+      }
       if (pcmStreamerRef.current) {
         pcmStreamerRef.current.stop();
         pcmStreamerRef.current = null;
@@ -714,6 +809,12 @@ export default function App() {
       maxTimerRef.current = null;
     }
     stopMonitoring();
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.stop();
+      } catch (e) {}
+      speechRecognitionRef.current = null;
+    }
     if (pcmStreamerRef.current) {
       pcmStreamerRef.current.stop();
       pcmStreamerRef.current = null;
@@ -728,6 +829,13 @@ export default function App() {
   // Unified candidate response processor
   const processCandidateResponse = async (transText: string) => {
     try {
+      const cleanText = (transText || "").trim();
+      if (!cleanText || isSilenceOrNoise(cleanText)) {
+        console.log("Empty response or noise token in processor - triggering clarification");
+        await handleSilenceClarification();
+        return;
+      }
+
       setStatus('thinking');
 
       let exText = currentPart === 'part1'
@@ -804,7 +912,7 @@ export default function App() {
             testPart: currentPart,
             mode,
             messages,
-            userSpeech: transText,
+            userSpeech: cleanText,
             cueCardTopic: currentCueCard.topic,
             accent
           })
@@ -817,12 +925,12 @@ export default function App() {
         console.warn("Offline conversation feedback note");
       }
 
-      setCandidateText(transText);
+      setCandidateText(cleanText);
 
       const candMsg: ChatMessage = {
         id: `msg-${Date.now()}`,
         sender: 'candidate',
-        text: transText,
+        text: cleanText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         corrections: correctionsData
       };
@@ -851,37 +959,45 @@ export default function App() {
     try {
       setStatus('transcribing');
 
-      const formData = new FormData();
-      formData.append('file', blob, 'candidate.webm');
-      formData.append('session_id', sessionId || '');
-      formData.append('part', partNum.toString());
-      formData.append('question', examinerText);
+      let transText = liveSpeechTranscriptRef.current.trim();
 
-      let transText = currentPart === 'part1'
-        ? "I am currently living in my hometown, which is known for its pleasant parks and friendly local community."
-        : currentPart === 'part2'
-        ? "I would like to talk about a memorable journey I took with my family. The natural scenery and rich local culture made it truly unforgettable."
-        : "In my opinion, modern technology has vastly expanded accessibility to international communication and streamlined global collaboration.";
+      // Try FastAPI conversation endpoint if available
+      if (sessionId) {
+        try {
+          const formData = new FormData();
+          formData.append('file', blob, 'candidate.webm');
+          formData.append('session_id', sessionId);
+          formData.append('part', partNum.toString());
+          formData.append('question', examinerText);
 
-      // 1. Try FastAPI conversation endpoint if available
-      try {
-        const response = await fetch(`${API_URL}/conversation`, {
-          method: 'POST',
-          body: formData,
-        });
+          const response = await fetch(`${API_URL}/conversation`, {
+            method: 'POST',
+            body: formData,
+            signal: AbortSignal.timeout(3000),
+          });
 
-        if (response.ok) {
-          const data = await response.json();
-          transText = data.candidate_text || transText;
+          if (response.ok) {
+            const data = await response.json();
+            if (data.candidate_text && data.candidate_text.trim()) {
+              transText = data.candidate_text.trim();
+            }
+          }
+        } catch (err) {
+          // Continue with transText
         }
-      } catch (err) {
-        // Fallback default
+      }
+
+      // Check if user spoke or if empty audio / silence was detected
+      if (!transText || isSilenceOrNoise(transText)) {
+        console.log("No speech or silence detected in candidate audio - asking for clarification");
+        await handleSilenceClarification();
+        return;
       }
 
       await processCandidateResponse(transText);
     } catch (error) {
       console.warn('Audio fallback processing notice:', error);
-      setStatus('ready');
+      await handleSilenceClarification();
     }
   };
 
@@ -1295,6 +1411,7 @@ export default function App() {
               mode={mode}
               onPlayMessageVoice={(txt) => playExaminerVoice(txt)}
               isLoading={status === 'transcribing' || status === 'thinking'}
+              evaluationReport={report}
             />
 
             {/* Real-Time Conversation Controls */}
@@ -1334,14 +1451,15 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Real-time Audio Level Visualizer Bar */}
+              {/* Advanced Real-time Audio Waveform & Spectrum Visualizer */}
               {status === 'recording' && (
-                <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800 flex items-center">
-                  <div 
-                    className={`h-full transition-all duration-75 ${isVoiceDetected ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : 'bg-slate-700'}`}
-                    style={{ width: `${Math.max(3, Math.min(100, audioLevel))}%` }}
-                  />
-                </div>
+                <AudioWaveformVisualizer
+                  analyserNode={analyserNode}
+                  isRecording={status === 'recording'}
+                  isVoiceDetected={isVoiceDetected}
+                  audioLevel={audioLevel}
+                  silenceProgress={silenceProgress}
+                />
               )}
 
               {/* Action Area: Voice Controls */}
