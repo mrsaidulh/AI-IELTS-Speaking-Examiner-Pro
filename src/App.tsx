@@ -169,10 +169,12 @@ export default function App() {
 
   // Voice Activity Detection (VAD) Hook with generous natural IELTS pause allowances
   const { isVoiceDetected, audioLevel, analyserNode, silenceProgress, startMonitoring, stopMonitoring } = useVAD({
-    threshold: 0.012, // Sensitive to soft speech and standard headset mics
-    silenceDelay: currentPart === 'part2' ? 10000 : 5000, // 5.0s in Part 1/3, 10.0s in Part 2 long turn
-    minSpeechTime: 600,
+    threshold: 0.008, // Extra sensitive to detect soft speech and standard microphones
+    silenceDelay: currentPart === 'part2' ? 14000 : 8000, // 8.0s in Part 1/3, 14.0s in Part 2 long turn
+    minSpeechTime: 800,
   });
+
+  const [liveCandidateTranscript, setLiveCandidateTranscript] = useState<string>('');
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     const saved = localStorage.getItem('ielts_messages');
@@ -659,6 +661,7 @@ export default function App() {
       isRecordingAudioRef.current = true;
       accumulatedSpeechTranscriptRef.current = '';
       liveSpeechTranscriptRef.current = '';
+      setLiveCandidateTranscript('');
 
       // Start Browser SpeechRecognition in parallel if available
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -671,22 +674,21 @@ export default function App() {
           rec.maxAlternatives = 1;
 
           rec.onresult = (event: any) => {
-            let interim = '';
-            let currentFinal = '';
-            for (let i = event.resultIndex; i < event.results.length; ++i) {
+            let sessionFinal = '';
+            let sessionInterim = '';
+            for (let i = 0; i < event.results.length; ++i) {
               const result = event.results[i];
               if (result.isFinal) {
-                currentFinal += result[0].transcript + ' ';
+                sessionFinal += result[0].transcript + ' ';
               } else {
-                interim += result[0].transcript + ' ';
+                sessionInterim += result[0].transcript + ' ';
               }
             }
-            if (currentFinal) {
-              accumulatedSpeechTranscriptRef.current = `${accumulatedSpeechTranscriptRef.current} ${currentFinal}`.replace(/\s+/g, ' ').trim();
-            }
-            const fullCombined = `${accumulatedSpeechTranscriptRef.current} ${interim}`.replace(/\s+/g, ' ').trim();
+            const currentSession = `${sessionFinal} ${sessionInterim}`.replace(/\s+/g, ' ').trim();
+            const fullCombined = `${accumulatedSpeechTranscriptRef.current} ${currentSession}`.replace(/\s+/g, ' ').trim();
             if (fullCombined) {
               liveSpeechTranscriptRef.current = fullCombined;
+              setLiveCandidateTranscript(fullCombined);
             }
           };
 
@@ -696,6 +698,9 @@ export default function App() {
 
           rec.onend = () => {
             if (isRecordingAudioRef.current) {
+              if (liveSpeechTranscriptRef.current) {
+                accumulatedSpeechTranscriptRef.current = liveSpeechTranscriptRef.current;
+              }
               try {
                 rec.start();
               } catch (restartErr) {
@@ -735,8 +740,11 @@ export default function App() {
           console.log('VAD: User began speaking answer...');
         },
         () => {
-          console.log('VAD Triggered: User finished speaking (silence detected), automatically stopping answer...');
-          stopRecording();
+          // Generous IELTS tolerance: Only auto-complete if user has spoken an answer and remained silent
+          if (liveSpeechTranscriptRef.current.trim().length > 15) {
+            console.log('VAD Triggered: Full silence threshold reached after answer, finishing turn...');
+            stopRecording();
+          }
         }
       );
 
@@ -1482,13 +1490,33 @@ export default function App() {
 
               {/* Advanced Real-time Audio Waveform & Spectrum Visualizer */}
               {status === 'recording' && (
-                <AudioWaveformVisualizer
-                  analyserNode={analyserNode}
-                  isRecording={status === 'recording'}
-                  isVoiceDetected={isVoiceDetected}
-                  audioLevel={audioLevel}
-                  silenceProgress={silenceProgress}
-                />
+                <div className="space-y-3">
+                  <AudioWaveformVisualizer
+                    analyserNode={analyserNode}
+                    isRecording={status === 'recording'}
+                    isVoiceDetected={isVoiceDetected}
+                    audioLevel={audioLevel}
+                    silenceProgress={silenceProgress}
+                  />
+
+                  {/* Real-Time Live Spoken Transcript Preview */}
+                  <div className="bg-slate-950/90 border border-emerald-500/30 rounded-xl p-3 space-y-1.5 text-left">
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-400">
+                      <span className="flex items-center space-x-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                        <span>Live Speech Stream</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">Real-time word detection</span>
+                    </div>
+                    <div className="text-sm font-medium text-slate-100 min-h-[38px] max-h-28 overflow-y-auto leading-relaxed bg-slate-900/90 rounded-lg p-2.5 border border-slate-800">
+                      {liveCandidateTranscript ? (
+                        <span className="text-emerald-200">{liveCandidateTranscript}</span>
+                      ) : (
+                        <span className="text-slate-500 italic">Listening to your answer... Speak freely into your microphone.</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
               )}
 
               {/* Action Area: Voice Controls */}
@@ -1519,7 +1547,7 @@ export default function App() {
                       </button>
                     </div>
                     <p className="text-[11px] text-slate-400 italic">
-                      ✨ Automatic VAD active: Stops after 1.5s silence or max {currentPart === 'part2' ? '120s' : '60s'}
+                      ✨ Continuous speech active • Speak at your natural pace and click <strong>Stop Answer</strong> when finished
                     </p>
                   </div>
                 )}

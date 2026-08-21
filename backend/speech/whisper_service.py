@@ -233,14 +233,11 @@ class WhisperService:
                     detected_lang = getattr(info, "language", target_lang)
                     prob = round(getattr(info, "language_probability", 1.0), 3)
                 except Exception as e:
-                    # Fallback for invalid/empty audio data or test audio inputs
-                    full_text = "I really enjoy living in Mymensingh because it is peaceful."
-                    segments = [
-                        TranscriptSegment(start=0.0, end=2.2, text="I really enjoy living in Mymensingh"),
-                        TranscriptSegment(start=2.2, end=4.5, text="because it is peaceful.")
-                    ]
+                    # Fallback for invalid/empty audio data
+                    full_text = ""
+                    segments = []
                     detected_lang = target_lang
-                    prob = 0.99
+                    prob = 0.0
 
             elif self.backend_type == "openai_whisper":
                 result = self.model.transcribe(str(target_path), language=target_lang, task=task)
@@ -259,26 +256,11 @@ class WhisperService:
                 prob = 1.0
 
             else:
-                # Mock Whisper fallback for testing and lightweight environments
-                if audio_duration_sec < 0.6:
-                    full_text = ""
-                    segments = []
-                elif is_partial:
-                    if audio_duration_sec < 1.5:
-                        full_text = "Well, to begin with"
-                    elif audio_duration_sec < 3.0:
-                        full_text = "Well, to begin with, my hometown is quite vibrant"
-                    else:
-                        full_text = "Well, to begin with, my hometown is quite vibrant and situated in a very scenic region."
-                    segments = [TranscriptSegment(start=0.0, end=round(audio_duration_sec, 2), text=full_text)]
-                else:
-                    full_text = "Well, to begin with, my hometown is quite vibrant and situated in a scenic region with friendly communities."
-                    segments = [
-                        TranscriptSegment(start=0.0, end=2.2, text="Well, to begin with, my hometown is quite vibrant"),
-                        TranscriptSegment(start=2.2, end=round(audio_duration_sec, 2), text="and situated in a scenic region with friendly communities.")
-                    ]
+                # In environments without local Whisper weights installed, return empty string for silence/unknown
+                full_text = ""
+                segments = []
                 detected_lang = target_lang
-                prob = 0.99
+                prob = 0.0
 
             processing_time_sec = round(time.perf_counter() - start_time, 4)
             rtf = round(processing_time_sec / max(audio_duration_sec, 0.01), 4)

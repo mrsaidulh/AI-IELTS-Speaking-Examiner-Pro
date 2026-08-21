@@ -1084,11 +1084,12 @@ async def speaking_websocket(websocket: WebSocket, session_id: str | None = None
                     for prev_chunk in rolling_buffer.get():
                         answer_buffer.add(prev_chunk)
                     rolling_buffer.clear()
+                    answer_buffer.add(chunk)
                     await websocket.send_text(json.dumps({
                         "type": "phase",
                         "value": "listening"
                     }))
-                elif event in ["speech_confirmed", "speech_continued", "speech_resumed"]:
+                elif event in ["speech_confirmed", "speech_continued", "speech_resumed", "possible_end"]:
                     answer_buffer.add(chunk)
                 elif event == "speech_ended":
                     answer_buffer.add(chunk)
@@ -1096,8 +1097,11 @@ async def speaking_websocket(websocket: WebSocket, session_id: str | None = None
                     segmenter.reset()
                     rolling_buffer.clear()
                 else:
-                    # Fallback for monolithic single webm uploads
-                    if len(chunk) > 10000 and answer_buffer.size() == 0:
+                    # If recording is already in progress, keep capturing chunks continuously
+                    if answer_buffer.size() > 0:
+                        answer_buffer.add(chunk)
+                    elif len(chunk) > 10000 and answer_buffer.size() == 0:
+                        # Fallback for monolithic single webm uploads
                         answer_buffer.add(chunk)
                         await process_buffered_audio(websocket, session_id, engine, answer_buffer)
                         segmenter.reset()
@@ -1163,6 +1167,47 @@ async def synthesize_speech_get(text: str = "Where are you from?", voice: str = 
     return await synthesize_speech(req)
 
 
+
+class ExaminerQuestionRequest(BaseModel):
+    part: Optional[str] = "part1"
+    history: Optional[List[Any]] = None
+    speech: Optional[str] = ""
+
+@app.post("/api/examiner/question")
+async def get_examiner_question(request: ExaminerQuestionRequest):
+    """
+    Direct endpoint for retrieving the next examiner question in the IELTS sequence.
+    """
+    part = (request.part or "part1").lower()
+    speech = (request.speech or "").strip()
+    
+    # Generate question based on active part and context
+    if "part2" in part:
+        return {
+            "question": "Please begin your 2-minute response on your assigned cue card topic.",
+            "examiner_text": "Please begin your 2-minute response on your assigned cue card topic."
+        }
+    elif "part3" in part:
+        return {
+            "question": "How do you think rapid technological advancement is affecting traditional lifestyle habits in your country?",
+            "examiner_text": "How do you think rapid technological advancement is affecting traditional lifestyle habits in your country."
+        }
+    else:
+        # Part 1 questions
+        p1_defaults = [
+            "Where is your hometown located, and what is it like?",
+            "What do you like most about the place where you live?",
+            "Do you work, or are you currently studying?",
+            "How do you usually like to spend your free time on weekends?",
+            "Do you think having a regular daily routine is important?"
+        ]
+        history_len = len(request.history or [])
+        idx = (history_len // 2) % len(p1_defaults)
+        chosen = p1_defaults[idx]
+        return {
+            "question": chosen,
+            "examiner_text": chosen
+        }
 
 @app.get("/api/session/{session_id}/report")
 def get_session_report(session_id: str):

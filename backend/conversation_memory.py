@@ -19,3 +19,6 @@ class ConversationMemory:
 
     def get_recent_messages(self, limit=10):
         return self.messages[-limit:]
+
+    def get_recent(self, limit=10):
+        return self.messages[-limit:]
