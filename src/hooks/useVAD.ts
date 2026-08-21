@@ -2,16 +2,16 @@ import { useRef, useState, useCallback } from 'react';
 import { createNormalizedAudioPipeline, NormalizedAudioPipeline } from '../audio/audioNormalizer';
 
 export interface VADOptions {
-  threshold?: number;         // RMS threshold for voice detection (default: 0.02)
-  silenceDelay?: number;      // Silence timeout before stopping in ms (default: 1500ms)
-  minSpeechTime?: number;     // Minimum required speech duration in ms (default: 300ms)
+  threshold?: number;         // RMS threshold for voice detection (default: 0.012)
+  silenceDelay?: number;      // Silence timeout before stopping in ms (default: 5000ms)
+  minSpeechTime?: number;     // Minimum required speech duration in ms (default: 600ms)
 }
 
 export function useVAD(options: VADOptions = {}) {
   const {
-    threshold = 0.02,
-    silenceDelay = 1500,
-    minSpeechTime = 300,
+    threshold = 0.012,
+    silenceDelay = 5000,
+    minSpeechTime = 600,
   } = options;
 
   const pipelineRef = useRef<NormalizedAudioPipeline | null>(null);

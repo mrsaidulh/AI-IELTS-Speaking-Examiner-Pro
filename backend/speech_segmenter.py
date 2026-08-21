@@ -6,9 +6,9 @@ class SpeechSegmenter:
 
     def __init__(
         self,
-        silence_timeout=1.5,
-        min_speech_duration=0.3,
-        max_answer_duration=60.0
+        silence_timeout=4.0,
+        min_speech_duration=0.5,
+        max_answer_duration=120.0
     ):
         self.state = SpeechState.WAITING
         self.silence_timeout = silence_timeout

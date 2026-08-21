@@ -121,6 +121,8 @@ export default function App() {
   const stageTransitionTimerRef = useRef<any>(null);
   const speechRecognitionRef = useRef<any>(null);
   const liveSpeechTranscriptRef = useRef<string>('');
+  const accumulatedSpeechTranscriptRef = useRef<string>('');
+  const isRecordingAudioRef = useRef<boolean>(false);
 
   // Silence and noise token filter to prevent phantom STT hallucinations
   const isSilenceOrNoise = (text: string): boolean => {
@@ -165,11 +167,11 @@ export default function App() {
     }
   };
 
-  // Voice Activity Detection (VAD) Hook
+  // Voice Activity Detection (VAD) Hook with generous natural IELTS pause allowances
   const { isVoiceDetected, audioLevel, analyserNode, silenceProgress, startMonitoring, stopMonitoring } = useVAD({
-    threshold: 0.02,
-    silenceDelay: 1500,
-    minSpeechTime: 300,
+    threshold: 0.012, // Sensitive to soft speech and standard headset mics
+    silenceDelay: currentPart === 'part2' ? 10000 : 5000, // 5.0s in Part 1/3, 10.0s in Part 2 long turn
+    minSpeechTime: 600,
   });
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
@@ -654,6 +656,8 @@ export default function App() {
   // Start Recording Audio
   const startRecording = async () => {
     try {
+      isRecordingAudioRef.current = true;
+      accumulatedSpeechTranscriptRef.current = '';
       liveSpeechTranscriptRef.current = '';
 
       // Start Browser SpeechRecognition in parallel if available
@@ -664,21 +668,44 @@ export default function App() {
           rec.continuous = true;
           rec.interimResults = true;
           rec.lang = 'en-US';
+          rec.maxAlternatives = 1;
+
           rec.onresult = (event: any) => {
-            let combined = '';
-            for (let i = 0; i < event.results.length; i++) {
-              combined += event.results[i][0].transcript + ' ';
+            let interim = '';
+            let currentFinal = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+              const result = event.results[i];
+              if (result.isFinal) {
+                currentFinal += result[0].transcript + ' ';
+              } else {
+                interim += result[0].transcript + ' ';
+              }
             }
-            if (combined.trim()) {
-              liveSpeechTranscriptRef.current = combined.trim();
+            if (currentFinal) {
+              accumulatedSpeechTranscriptRef.current = `${accumulatedSpeechTranscriptRef.current} ${currentFinal}`.replace(/\s+/g, ' ').trim();
+            }
+            const fullCombined = `${accumulatedSpeechTranscriptRef.current} ${interim}`.replace(/\s+/g, ' ').trim();
+            if (fullCombined) {
+              liveSpeechTranscriptRef.current = fullCombined;
             }
           };
+
           rec.onerror = (errEvent: any) => {
             console.warn('Browser SpeechRecognition notice:', errEvent.error);
           };
+
           rec.onend = () => {
-            speechRecognitionRef.current = null;
+            if (isRecordingAudioRef.current) {
+              try {
+                rec.start();
+              } catch (restartErr) {
+                // Ignore if already restarting
+              }
+            } else {
+              speechRecognitionRef.current = null;
+            }
           };
+
           rec.start();
           speechRecognitionRef.current = rec;
         } catch (recErr) {
@@ -781,6 +808,7 @@ export default function App() {
       );
     } catch (err: any) {
       console.warn('Microphone access notice:', err?.name || err?.message || err);
+      isRecordingAudioRef.current = false;
       stopMonitoring();
       if (speechRecognitionRef.current) {
         try { speechRecognitionRef.current.stop(); } catch (e) {}
@@ -804,6 +832,7 @@ export default function App() {
 
   // Stop Recording
   const stopRecording = () => {
+    isRecordingAudioRef.current = false;
     if (maxTimerRef.current) {
       clearTimeout(maxTimerRef.current);
       maxTimerRef.current = null;

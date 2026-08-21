@@ -1,8 +1,8 @@
 VOICE_CONFIG = {
     "sample_rate": 16000,
-    "silence_threshold": 1.2,
-    "minimum_speech_duration": 0.8,
-    "maximum_answer_duration": 120,
+    "silence_threshold": 4.0,
+    "minimum_speech_duration": 0.5,
+    "maximum_answer_duration": 150,
 }
 
 PART_LIMITS = {

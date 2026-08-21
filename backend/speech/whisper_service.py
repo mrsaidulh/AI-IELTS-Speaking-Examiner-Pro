@@ -260,19 +260,22 @@ class WhisperService:
 
             else:
                 # Mock Whisper fallback for testing and lightweight environments
-                if is_partial:
-                    if audio_duration_sec < 1.0:
-                        full_text = "I really"
-                    elif audio_duration_sec < 2.0:
-                        full_text = "I really enjoy living"
+                if audio_duration_sec < 0.6:
+                    full_text = ""
+                    segments = []
+                elif is_partial:
+                    if audio_duration_sec < 1.5:
+                        full_text = "Well, to begin with"
+                    elif audio_duration_sec < 3.0:
+                        full_text = "Well, to begin with, my hometown is quite vibrant"
                     else:
-                        full_text = "I really enjoy living in Mymensingh..."
+                        full_text = "Well, to begin with, my hometown is quite vibrant and situated in a very scenic region."
                     segments = [TranscriptSegment(start=0.0, end=round(audio_duration_sec, 2), text=full_text)]
                 else:
-                    full_text = "I really enjoy living in Mymensingh because it is peaceful."
+                    full_text = "Well, to begin with, my hometown is quite vibrant and situated in a scenic region with friendly communities."
                     segments = [
-                        TranscriptSegment(start=0.0, end=2.2, text="I really enjoy living in Mymensingh"),
-                        TranscriptSegment(start=2.2, end=4.5, text="because it is peaceful.")
+                        TranscriptSegment(start=0.0, end=2.2, text="Well, to begin with, my hometown is quite vibrant"),
+                        TranscriptSegment(start=2.2, end=round(audio_duration_sec, 2), text="and situated in a scenic region with friendly communities.")
                     ]
                 detected_lang = target_lang
                 prob = 0.99
@@ -284,7 +287,7 @@ class WhisperService:
             self.last_rtf = rtf
 
             return Transcript(
-                text=full_text if full_text else "I live in Mymensingh.",
+                text=full_text,
                 language=detected_lang,
                 segments=segments,
                 language_probability=prob,

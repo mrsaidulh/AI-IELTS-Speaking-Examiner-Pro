@@ -32,13 +32,13 @@ class VADConfig:
         if silence_threshold_sec is not None:
             self.silence_threshold_sec = silence_threshold_sec
         elif mode == VADMode.PART1:
-            self.silence_threshold_sec = 1.2
+            self.silence_threshold_sec = 4.0
         elif mode == VADMode.PART2:
-            self.silence_threshold_sec = 3.0
+            self.silence_threshold_sec = 8.0
         elif mode == VADMode.PART3:
-            self.silence_threshold_sec = 1.8
+            self.silence_threshold_sec = 5.0
         else:
-            self.silence_threshold_sec = 1.5
+            self.silence_threshold_sec = 4.5
 
 
 class RealtimeVADEngine:
@@ -61,11 +61,11 @@ class RealtimeVADEngine:
     def set_mode(self, mode: VADMode):
         self.config.mode = mode
         if mode == VADMode.PART1:
-            self.config.silence_threshold_sec = 1.2
+            self.config.silence_threshold_sec = 4.0
         elif mode == VADMode.PART2:
-            self.config.silence_threshold_sec = 3.0
+            self.config.silence_threshold_sec = 8.0
         elif mode == VADMode.PART3:
-            self.config.silence_threshold_sec = 1.8
+            self.config.silence_threshold_sec = 5.0
 
     def set_examiner_speaking(self, is_speaking: bool):
         """Sets feedback cancellation state to ignore microphone input while AI speaks."""

@@ -85,7 +85,7 @@ def get_part3_controller(session_id: str, topic_key: str = "education") -> Part3
     return session_part3_controllers[session_id]
 
 
-def is_chunk_speech(chunk: bytes, threshold: float = 300.0) -> bool:
+def is_chunk_speech(chunk: bytes, threshold: float = 120.0) -> bool:
     if len(chunk) % 2 == 0 and not chunk.startswith(b"\x1a\x45\xdf\xa3") and not chunk.startswith(b"OggS") and not chunk.startswith(b"RIFF"):
         num_samples = len(chunk) // 2
         if num_samples == 0:

@@ -28,6 +28,8 @@ export const AudioRecorderControls: React.FC<AudioRecorderControlsProps> = ({
   const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
   
   const recognitionRef = useRef<any>(null);
+  const isListeningRef = useRef<boolean>(false);
+  const accumulatedRef = useRef<string>('');
   const pipelineRef = useRef<NormalizedAudioPipeline | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animRef = useRef<number | null>(null);
@@ -42,22 +44,40 @@ export const AudioRecorderControls: React.FC<AudioRecorderControlsProps> = ({
       rec.lang = 'en-US';
 
       rec.onresult = (event: any) => {
-        let currentTranscript = '';
+        let interim = '';
+        let currentFinal = '';
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          currentTranscript += event.results[i][0].transcript;
+          const result = event.results[i];
+          if (result.isFinal) {
+            currentFinal += result[0].transcript + ' ';
+          } else {
+            interim += result[0].transcript + ' ';
+          }
         }
-        setInputText(currentTranscript);
+        if (currentFinal) {
+          accumulatedRef.current = `${accumulatedRef.current} ${currentFinal}`.replace(/\s+/g, ' ').trim();
+        }
+        const fullTranscript = `${accumulatedRef.current} ${interim}`.replace(/\s+/g, ' ').trim();
+        if (fullTranscript) {
+          setInputText(fullTranscript);
+        }
       };
 
       rec.onerror = (event: any) => {
-        console.warn('Speech recognition error:', event.error);
-        stopAudioGraph();
-        setIsListening(false);
+        console.warn('Speech recognition notice:', event.error);
       };
 
       rec.onend = () => {
-        stopAudioGraph();
-        setIsListening(false);
+        if (isListeningRef.current) {
+          try {
+            rec.start();
+          } catch (restartErr) {
+            // Already started or active
+          }
+        } else {
+          stopAudioGraph();
+          setIsListening(false);
+        }
       };
 
       recognitionRef.current = rec;
@@ -117,16 +137,22 @@ export const AudioRecorderControls: React.FC<AudioRecorderControlsProps> = ({
     if (!recognitionRef.current) return;
 
     if (isListening) {
-      recognitionRef.current.stop();
+      isListeningRef.current = false;
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
       stopAudioGraph();
       setIsListening(false);
     } else {
       try {
+        isListeningRef.current = true;
+        accumulatedRef.current = inputText.trim();
         await startAudioGraph();
         recognitionRef.current.start();
         setIsListening(true);
       } catch (err) {
         console.error('Error starting speech rec:', err);
+        isListeningRef.current = false;
       }
     }
   };
@@ -134,10 +160,14 @@ export const AudioRecorderControls: React.FC<AudioRecorderControlsProps> = ({
   const handleSend = () => {
     if (!inputText.trim() || isLoading) return;
     if (isListening && recognitionRef.current) {
-      recognitionRef.current.stop();
+      isListeningRef.current = false;
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
       stopAudioGraph();
       setIsListening(false);
     }
+    accumulatedRef.current = '';
     onSendSpeech(inputText.trim());
     setInputText('');
   };
