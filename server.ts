@@ -10,10 +10,14 @@ async function startServer() {
   app.use(express.json({ limit: "10mb" }));
 
   // Initialize Gemini AI
+  let hasLoggedGeminiKeyWarn = false;
   const getAiClient = () => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      console.warn("GEMINI_API_KEY is missing from environment. Using fallback modes.");
+      if (!hasLoggedGeminiKeyWarn) {
+        console.warn("GEMINI_API_KEY is missing from environment. Using local backend / offline fallback modes.");
+        hasLoggedGeminiKeyWarn = true;
+      }
       return null;
     }
     return new GoogleGenAI({

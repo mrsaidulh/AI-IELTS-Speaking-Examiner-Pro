@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File, Form, Body, HTTPException, WebSoc
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional, List, Any, Dict, Union
 import shutil
 import uuid
 import os
@@ -127,7 +128,9 @@ session_timers = {}
 
 class StartSessionRequest(BaseModel):
     name: str = "Saidul Hasan"
-    email: str | None = "student@example.com"
+    email: Optional[str] = "student@example.com"
+
+StartSessionRequest.model_rebuild()
 
 @app.get("/")
 def home():
@@ -1131,19 +1134,22 @@ def examiner_audio():
     )
 
 class TTSRequest(BaseModel):
-    text: str
+    text: str = ""
     voice: str = "af_heart"
     speed: float = 1.0
+
+TTSRequest.model_rebuild()
 
 @app.post("/tts")
 @app.post("/api/tts")
 @app.post("/api/examiner/voice")
-async def synthesize_speech(request: TTSRequest):
+async def synthesize_speech(request: Optional[Dict[str, Any]] = Body(default={})):
     """
     Direct high-fidelity Kokoro TTS endpoint.
     Synthesizes examiner speech and streams audio/mpeg binary directly to frontend.
     """
-    text = (request.text or "").strip()
+    req_dict = request or {}
+    text = str(req_dict.get("text") or "").strip()
     if not text:
         text = "Could you please tell me a little about yourself?"
 
@@ -1167,23 +1173,26 @@ async def synthesize_speech(request: TTSRequest):
 @app.get("/tts")
 @app.get("/api/tts")
 async def synthesize_speech_get(text: str = "Where are you from?", voice: str = "af_heart"):
-    req = TTSRequest(text=text, voice=voice)
-    return await synthesize_speech(req)
+    return await synthesize_speech({"text": text, "voice": voice})
 
 
 
 class ExaminerQuestionRequest(BaseModel):
-    part: Optional[str] = "part1"
-    history: Optional[List[Any]] = None
-    speech: Optional[str] = ""
+    part: str = "part1"
+    history: List[Any] = []
+    speech: str = ""
+
+ExaminerQuestionRequest.model_rebuild()
 
 @app.post("/api/examiner/question")
-async def get_examiner_question(request: ExaminerQuestionRequest):
+async def get_examiner_question(request: Optional[Dict[str, Any]] = Body(default={})):
     """
     Direct endpoint for retrieving the next examiner question in the IELTS sequence.
     """
-    part = (request.part or "part1").lower()
-    speech = (request.speech or "").strip()
+    req_dict = request or {}
+    part = str(req_dict.get("part") or "part1").lower()
+    speech = str(req_dict.get("speech") or "").strip()
+    history = req_dict.get("history") or []
     
     # Generate question based on active part and context
     if "part2" in part:
@@ -1205,7 +1214,7 @@ async def get_examiner_question(request: ExaminerQuestionRequest):
             "How do you usually like to spend your free time on weekends?",
             "Do you think having a regular daily routine is important?"
         ]
-        history_len = len(request.history or [])
+        history_len = len(history)
         idx = (history_len // 2) % len(p1_defaults)
         chosen = p1_defaults[idx]
         return {

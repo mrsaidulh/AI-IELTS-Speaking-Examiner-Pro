@@ -175,8 +175,7 @@ export default function App() {
   });
 
   const [liveCandidateTranscript, setLiveCandidateTranscript] = useState<string>('');
-  const [typedAnswer, setTypedAnswer] = useState<string>('');
-  const [showTextInput, setShowTextInput] = useState<boolean>(false);
+  const completedFinalSegmentsRef = useRef<string[]>([]);
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     const saved = localStorage.getItem('ielts_messages');
@@ -467,17 +466,32 @@ export default function App() {
               else if (msg.value === 'ready') setStatus('ready');
             } else if (msg.type === 'transcription' || msg.type === 'transcript') {
               const rawText = (msg.text || "").trim();
-              if (rawText && !isSilenceOrNoise(rawText)) {
-                setCandidateText(rawText);
+              const liveText = (liveSpeechTranscriptRef.current || liveCandidateTranscript || "").trim();
+              // Pick the most comprehensive transcript between local continuous recognition and backend
+              const bestCandidateText = (liveText.length > rawText.length && !isSilenceOrNoise(liveText)) 
+                ? liveText 
+                : (rawText || liveText);
+
+              if (bestCandidateText && !isSilenceOrNoise(bestCandidateText)) {
+                setCandidateText(bestCandidateText);
                 setMessages((prev) => {
                   const lastMsg = prev[prev.length - 1];
-                  if (lastMsg && lastMsg.sender === 'candidate' && lastMsg.text === rawText) {
+                  if (lastMsg && lastMsg.sender === 'candidate' && (lastMsg.text === bestCandidateText || lastMsg.text.length >= bestCandidateText.length)) {
                     return prev;
+                  }
+                  // If last message was a partial candidate bubble, replace with full response
+                  if (lastMsg && lastMsg.sender === 'candidate') {
+                    const updated = [...prev];
+                    updated[updated.length - 1] = {
+                      ...lastMsg,
+                      text: bestCandidateText
+                    };
+                    return updated;
                   }
                   const candMsg: ChatMessage = {
                     id: `msg-c-${Date.now()}`,
                     sender: 'candidate',
-                    text: rawText,
+                    text: bestCandidateText,
                     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                   };
                   return [...prev, candMsg];
@@ -661,6 +675,7 @@ export default function App() {
   const startRecording = async () => {
     try {
       isRecordingAudioRef.current = true;
+      completedFinalSegmentsRef.current = [];
       accumulatedSpeechTranscriptRef.current = '';
       liveSpeechTranscriptRef.current = '';
       setLiveCandidateTranscript('');
@@ -675,22 +690,30 @@ export default function App() {
           rec.lang = 'en-US';
           rec.maxAlternatives = 1;
 
+          let sessionFinalText = '';
+
           rec.onresult = (event: any) => {
-            let sessionFinal = '';
-            let sessionInterim = '';
+            let currentFinal = '';
+            let currentInterim = '';
+
             for (let i = 0; i < event.results.length; ++i) {
-              const result = event.results[i];
-              if (result.isFinal) {
-                sessionFinal += result[0].transcript + ' ';
+              const res = event.results[i];
+              if (res.isFinal) {
+                currentFinal += res[0].transcript + ' ';
               } else {
-                sessionInterim += result[0].transcript + ' ';
+                currentInterim += res[0].transcript + ' ';
               }
             }
-            const currentSession = `${sessionFinal} ${sessionInterim}`.replace(/\s+/g, ' ').trim();
-            const fullCombined = `${accumulatedSpeechTranscriptRef.current} ${currentSession}`.replace(/\s+/g, ' ').trim();
-            if (fullCombined) {
-              liveSpeechTranscriptRef.current = fullCombined;
-              setLiveCandidateTranscript(fullCombined);
+
+            sessionFinalText = currentFinal.trim();
+
+            const priorFinal = completedFinalSegmentsRef.current.join(' ').trim();
+            const allFinal = [priorFinal, sessionFinalText].filter(Boolean).join(' ').trim();
+            const combinedLive = [allFinal, currentInterim.trim()].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+
+            if (combinedLive) {
+              liveSpeechTranscriptRef.current = combinedLive;
+              setLiveCandidateTranscript(combinedLive);
             }
           };
 
@@ -700,8 +723,9 @@ export default function App() {
 
           rec.onend = () => {
             if (isRecordingAudioRef.current) {
-              if (liveSpeechTranscriptRef.current) {
-                accumulatedSpeechTranscriptRef.current = liveSpeechTranscriptRef.current;
+              if (sessionFinalText) {
+                completedFinalSegmentsRef.current.push(sessionFinalText);
+                sessionFinalText = '';
               }
               try {
                 rec.start();
@@ -1022,7 +1046,10 @@ export default function App() {
         if (transcribeRes.ok) {
           const tData = await transcribeRes.json();
           if (tData.transcript && tData.transcript.trim()) {
-            transText = tData.transcript.trim();
+            const servTx = tData.transcript.trim();
+            if (servTx.length > transText.length || transText.length < 5) {
+              transText = servTx;
+            }
           }
         }
       } catch (transErr) {
@@ -1047,7 +1074,10 @@ export default function App() {
           if (response.ok) {
             const data = await response.json();
             if (data.candidate_text && data.candidate_text.trim()) {
-              transText = data.candidate_text.trim();
+              const fastApiTx = data.candidate_text.trim();
+              if (fastApiTx.length > transText.length || transText.length < 5) {
+                transText = fastApiTx;
+              }
             }
           }
         } catch (err) {
@@ -1078,15 +1108,6 @@ export default function App() {
       console.warn('Audio fallback processing notice:', error);
       await handleSilenceClarification();
     }
-  };
-
-  const handleTypedSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const text = typedAnswer.trim();
-    if (!text) return;
-    setTypedAnswer('');
-    setShowTextInput(false);
-    await processCandidateResponse(text);
   };
 
   const getStatusText = () => {
@@ -1570,52 +1591,16 @@ export default function App() {
                 </div>
               )}
 
-              {/* Action Area: Voice & Text Controls */}
+              {/* Action Area: Spoken Voice Controls */}
               <div className="flex flex-col items-center justify-center space-y-3 py-2">
-                {status === 'ready' && !showTextInput && (
-                  <div className="flex items-center space-x-3">
-                    <button
-                      onClick={startRecording}
-                      className="bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold px-8 py-3.5 rounded-full shadow-lg shadow-emerald-600/30 flex items-center space-x-2 text-base transition-all transform hover:scale-105"
-                    >
-                      <Mic className="w-5 h-5" />
-                      <span>🎤 Start Spoken Answer</span>
-                    </button>
-                    <button
-                      onClick={() => setShowTextInput(true)}
-                      className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold px-4 py-3.5 rounded-full text-xs border border-slate-700 transition-all"
-                      title="Type your answer instead"
-                    >
-                      ⌨️ Type Answer
-                    </button>
-                  </div>
-                )}
-
-                {status === 'ready' && showTextInput && (
-                  <form onSubmit={handleTypedSubmit} className="w-full max-w-xl flex items-center space-x-2">
-                    <input
-                      type="text"
-                      value={typedAnswer}
-                      onChange={(e) => setTypedAnswer(e.target.value)}
-                      placeholder="Type your IELTS candidate response..."
-                      className="flex-1 bg-slate-950 border border-indigo-500/50 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      autoFocus
-                    />
-                    <button
-                      type="submit"
-                      disabled={!typedAnswer.trim()}
-                      className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold px-5 py-3 rounded-xl text-sm transition-all shadow-md shadow-indigo-600/30"
-                    >
-                      Submit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowTextInput(false)}
-                      className="bg-slate-800 hover:bg-slate-700 text-slate-400 px-3 py-3 rounded-xl text-xs transition-all"
-                    >
-                      Cancel
-                    </button>
-                  </form>
+                {status === 'ready' && (
+                  <button
+                    onClick={startRecording}
+                    className="bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold px-8 py-3.5 rounded-full shadow-lg shadow-emerald-600/30 flex items-center space-x-2 text-base transition-all transform hover:scale-105"
+                  >
+                    <Mic className="w-5 h-5" />
+                    <span>🎤 Start Spoken Answer</span>
+                  </button>
                 )}
 
                 {status === 'recording' && (

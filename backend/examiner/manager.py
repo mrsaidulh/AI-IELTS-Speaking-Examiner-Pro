@@ -33,21 +33,41 @@ class QuestionManager:
         if self.topic_index >= len(self.questions):
             return None
 
-        topic_data = self.questions[self.topic_index]
-        questions_list = topic_data["questions"]
+        item = self.questions[self.topic_index]
 
-        if self.question_index >= len(questions_list):
+        # Case 1: Item is a topic group with a "questions" list
+        if isinstance(item, dict) and "questions" in item and isinstance(item["questions"], list):
+            questions_list = item["questions"]
+            if self.question_index >= len(questions_list):
+                self.topic_index += 1
+                self.question_index = 0
+                return self.get_next_question()
+
+            question_text = questions_list[self.question_index]
+            self.question_index += 1
+            return {
+                "topic": item.get("topic", "general"),
+                "question": question_text
+            }
+
+        # Case 2: Item is a flat question object (e.g. {"id": ..., "topic": ..., "question": ...})
+        elif isinstance(item, dict) and "question" in item:
             self.topic_index += 1
-            self.question_index = 0
-            return self.get_next_question()
+            return {
+                "topic": item.get("topic", "general"),
+                "question": item.get("question")
+            }
 
-        question_text = questions_list[self.question_index]
-        self.question_index += 1
+        # Case 3: Item is a plain string
+        elif isinstance(item, str):
+            self.topic_index += 1
+            return {
+                "topic": "general",
+                "question": item
+            }
 
-        return {
-            "topic": topic_data["topic"],
-            "question": question_text
-        }
+        self.topic_index += 1
+        return None
 
     def reset(self):
         self.topic_index = 0
