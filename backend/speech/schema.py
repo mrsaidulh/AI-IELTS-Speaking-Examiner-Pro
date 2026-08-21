@@ -15,8 +15,15 @@ if PYDANTIC_AVAILABLE:
         end: float = Field(..., description="End timestamp in seconds")
         text: str = Field(..., description="Transcribed segment text")
 
-        def model_dump(self) -> Dict[str, Any]:
-            return self.dict() if hasattr(self, "dict") else super().model_dump()
+        def model_dump(self, *args, **kwargs) -> Dict[str, Any]:
+            if hasattr(super(), "model_dump"):
+                try:
+                    return super().model_dump(*args, **kwargs)
+                except Exception:
+                    pass
+            if hasattr(self, "dict"):
+                return self.dict(*args, **kwargs)
+            return {"start": self.start, "end": self.end, "text": self.text}
 
 
     class Transcript(BaseModel):
@@ -28,20 +35,26 @@ if PYDANTIC_AVAILABLE:
         rtf: float = Field(0.0, description="Real-Time Factor (processing_time / audio_duration)")
         is_partial: bool = Field(False, description="Flag indicating if transcript is temporary/partial or final")
 
-        def model_dump(self) -> Dict[str, Any]:
+        def model_dump(self, *args, **kwargs) -> Dict[str, Any]:
             if hasattr(super(), "model_dump"):
-                res = super().model_dump()
-            else:
-                res = {
-                    "text": self.text,
-                    "language": self.language,
-                    "segments": [s.model_dump() for s in self.segments],
-                    "language_probability": self.language_probability,
-                    "processing_time_sec": self.processing_time_sec,
-                    "rtf": self.rtf,
-                    "is_partial": self.is_partial
-                }
-            return res
+                try:
+                    return super().model_dump(*args, **kwargs)
+                except Exception:
+                    pass
+            if hasattr(self, "dict"):
+                try:
+                    return self.dict(*args, **kwargs)
+                except Exception:
+                    pass
+            return {
+                "text": self.text,
+                "language": self.language,
+                "segments": [s.model_dump() for s in self.segments],
+                "language_probability": self.language_probability,
+                "processing_time_sec": self.processing_time_sec,
+                "rtf": self.rtf,
+                "is_partial": self.is_partial
+            }
 
         def model_dump_json(self, indent: int = 2) -> str:
             return json.dumps(self.model_dump(), indent=indent)
@@ -60,10 +73,15 @@ if PYDANTIC_AVAILABLE:
         examiner_response: str = Field("", description="Generated examiner text response")
         latency_metrics: Dict[str, float] = Field(default_factory=dict, description="Latency breakdown metrics")
 
-        def model_dump(self) -> Dict[str, Any]:
+        def model_dump(self, *args, **kwargs) -> Dict[str, Any]:
             if hasattr(super(), "model_dump"):
-                return super().model_dump()
-            return self.dict()
+                try:
+                    return super().model_dump(*args, **kwargs)
+                except Exception:
+                    pass
+            if hasattr(self, "dict"):
+                return self.dict(*args, **kwargs)
+            return asdict(self) if "asdict" in globals() else {}
 
 else:
     @dataclass

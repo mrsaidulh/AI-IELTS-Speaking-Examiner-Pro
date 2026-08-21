@@ -26,6 +26,57 @@ async function startServer() {
     });
   };
 
+  // API Route: Transcribe audio using Gemini Multimodal or Local Whisper Proxy
+  app.post("/api/transcribe", async (req, res) => {
+    try {
+      const { audioBase64, mimeType = "audio/webm", candidateText = "" } = req.body || {};
+
+      // 1. If Gemini AI is configured, transcribe directly with Gemini Audio
+      try {
+        const ai = getAiClient();
+        if (ai && audioBase64) {
+          const transResp = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: mimeType || "audio/webm",
+                      data: audioBase64.replace(/^data:audio\/[a-z0-9]+;base64,/, ""),
+                    },
+                  },
+                  {
+                    text: "You are a speech-to-text transcriber for IELTS Speaking. Transcribe the candidate's spoken response word-for-word into clean English text. Do not add commentary or timestamps. Only return the exact transcription text.",
+                  },
+                ],
+              },
+            ],
+          });
+
+          const rawText = transResp.text?.trim() || "";
+          if (rawText && !rawText.toLowerCase().includes("no speech") && !rawText.toLowerCase().includes("silence")) {
+            return res.json({ transcript: rawText, text: rawText, source: "gemini_audio" });
+          }
+        }
+      } catch (geminiErr: any) {
+        console.warn("Gemini transcription notice:", geminiErr?.message || geminiErr);
+      }
+
+      // 2. If client provided live speech recognition text, return it
+      if (candidateText && candidateText.trim()) {
+        return res.json({ transcript: candidateText.trim(), text: candidateText.trim(), source: "browser_speech" });
+      }
+
+      // 3. Fallback: Return what was captured
+      return res.json({ transcript: candidateText.trim() || "", text: candidateText.trim() || "", source: "default" });
+    } catch (err: any) {
+      console.error("Transcribe error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // API Route: Health check & System Diagnostics
   app.get(["/api/health", "/api/system/status"], async (req, res) => {
     try {

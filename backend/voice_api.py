@@ -797,6 +797,8 @@ async def exam_websocket(websocket: WebSocket, session_id: str | None = None):
     try:
         while True:
             raw_message = await websocket.receive()
+            if raw_message.get("type") == "websocket.disconnect":
+                break
             
             # Handle Text JSON Messages
             if "text" in raw_message and raw_message["text"]:
@@ -856,6 +858,8 @@ async def speaking_websocket(websocket: WebSocket, session_id: str | None = None
     try:
         while True:
             message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                break
 
             # Handle JSON Control Messages
             if "text" in message and message["text"]:
