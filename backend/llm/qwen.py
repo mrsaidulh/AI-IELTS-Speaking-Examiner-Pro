@@ -7,10 +7,27 @@ from config import QWEN_URL, QWEN_MODEL
 class QwenService:
 
     def __init__(self, url=QWEN_URL, model=QWEN_MODEL, model_name=None, mock_mode=False):
-        self.url = url
-        self.model = model_name or model
+        self.url = url.rstrip("/")
+        self.model = model_name or model or "qwen2.5:7b"
         self.mock_mode = mock_mode
+        self._checked_model = False
 
+    def _discover_model(self):
+        if self._checked_model:
+            return
+        try:
+            req = urllib.request.Request(f"{self.url}/api/tags", headers={"User-Agent": "FastAPI-Qwen"})
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                models = [m.get("name") for m in data.get("models", []) if m.get("name")]
+                if models:
+                    if self.model not in models:
+                        # Prefer any qwen or first available model
+                        qwen_match = next((m for m in models if "qwen" in m.lower()), models[0])
+                        self.model = qwen_match
+            self._checked_model = True
+        except Exception:
+            self._checked_model = True
 
     def generate(self, prompt, system_prompt=None):
         if self.mock_mode:
@@ -18,6 +35,8 @@ class QwenService:
                 "action": "ASK_QUESTION",
                 "text": "What do you like most about your hometown?"
             })
+
+        self._discover_model()
 
         payload = {
             "model": self.model,
@@ -35,11 +54,11 @@ class QwenService:
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=3) as resp:
+            with urllib.request.urlopen(req, timeout=4) as resp:
                 res_json = json.loads(resp.read().decode("utf-8"))
                 return res_json.get("response", "").strip()
         except Exception as e:
-            print(f"QwenService connection fallback ({e}).")
+            # Clean fallback when Ollama is offline or model not loaded
             return json.dumps({
                 "action": "ASK_QUESTION",
                 "text": "Thank you. What do you like most about your hometown?"

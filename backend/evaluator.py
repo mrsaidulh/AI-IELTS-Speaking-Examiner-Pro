@@ -2,7 +2,7 @@ import requests
 import json
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL = "qwen3:8b"
+MODEL = "qwen2.5:7b-instruct"
 
 EVALUATION_PROMPT = """
 You are an IELTS Speaking assessment specialist.

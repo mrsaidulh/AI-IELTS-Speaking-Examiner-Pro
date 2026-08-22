@@ -464,22 +464,23 @@ export default function App() {
               else if (msg.value === 'thinking') setStatus('thinking');
               else if (msg.value === 'speaking') setStatus('speaking');
               else if (msg.value === 'ready') setStatus('ready');
-            } else if (msg.type === 'transcription' || msg.type === 'transcript') {
-              const rawText = (msg.text || "").trim();
+            } else if (
+              msg.type === 'transcription' || 
+              msg.type === 'transcript' || 
+              msg.type === 'transcript.final' ||
+              msg.type === 'transcript_final'
+            ) {
+              const rawText = (msg.text || (msg.data && msg.data.text) || "").trim();
               const liveText = (liveSpeechTranscriptRef.current || liveCandidateTranscript || "").trim();
-              // Pick the most comprehensive transcript between local continuous recognition and backend
-              const bestCandidateText = (liveText.length > rawText.length && !isSilenceOrNoise(liveText)) 
-                ? liveText 
-                : (rawText || liveText);
+              
+              // Backend Whisper transcript is authoritative over noisy browser heuristics
+              const bestCandidateText = rawText || liveText;
 
               if (bestCandidateText && !isSilenceOrNoise(bestCandidateText)) {
                 setCandidateText(bestCandidateText);
                 setMessages((prev) => {
                   const lastMsg = prev[prev.length - 1];
-                  if (lastMsg && lastMsg.sender === 'candidate' && (lastMsg.text === bestCandidateText || lastMsg.text.length >= bestCandidateText.length)) {
-                    return prev;
-                  }
-                  // If last message was a partial candidate bubble, replace with full response
+                  // If last message was a partial candidate bubble, replace with full authoritative response
                   if (lastMsg && lastMsg.sender === 'candidate') {
                     const updated = [...prev];
                     updated[updated.length - 1] = {

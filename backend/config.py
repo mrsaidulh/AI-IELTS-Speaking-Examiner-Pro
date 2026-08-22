@@ -10,7 +10,7 @@ class Settings:
     WHISPER_MODEL = "small"
     KOKORO_URL = os.getenv("KOKORO_URL", "http://localhost:8880")
     QWEN_URL = os.getenv("QWEN_URL", "http://localhost:11434")
-    QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen3:8b")
+    QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen2.5:7b-instruct")
     DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./ielts.db")
 
     PART_CONFIG = {

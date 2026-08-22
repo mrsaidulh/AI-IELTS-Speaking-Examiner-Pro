@@ -3,7 +3,7 @@ import requests
 OLLAMA_URL = "http://localhost:11434/api/chat"
 KOKORO_URL = "http://localhost:8880/v1/audio/speech"
 
-MODEL = "qwen3:8b"
+MODEL = "qwen2.5:7b-instruct"
 
 SYSTEM_PROMPT = """
 You are an IELTS Speaking examiner.

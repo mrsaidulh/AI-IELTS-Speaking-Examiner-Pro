@@ -1,7 +1,7 @@
 import requests
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL = "qwen3:8b"
+MODEL = "qwen2.5:7b-instruct"
 
 SYSTEM_PROMPT = """
 You are an IELTS Speaking examiner.

@@ -10,7 +10,7 @@ from faster_whisper import WhisperModel
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 KOKORO_URL = "http://localhost:8880/v1/audio/speech"
-LLM_MODEL = "qwen3:8b"
+LLM_MODEL = "qwen2.5:7b-instruct"
 
 # ============================================================
 # WHISPER

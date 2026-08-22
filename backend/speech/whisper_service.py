@@ -163,13 +163,21 @@ class WhisperService:
         print(f"[WhisperService] Warm-up completed in {warmup_latency}s. Model ready for low-latency inference.")
         return warmup_latency
 
+    IELTS_INITIAL_PROMPT = (
+        "IELTS Speaking test response in English. Clear candidate pronunciation. "
+        "Vocabulary includes: Bangladesh, Dhaka, Chittagong, Sylhet, Rajshahi, Khulna, Barishal, Rangpur, Mymensingh, "
+        "division, district, hometown, peaceful, accommodation, subcontractor, residence, comfortable, "
+        "university, engineering, IELTS speaking, hobbies, routine, education, technology."
+    )
+
     def transcribe(
         self,
         audio_source: Union[str, bytes, io.BytesIO],
         language: Optional[str] = None,
         task: str = "transcribe",
         beam_size: int = 5,
-        is_partial: bool = False
+        is_partial: bool = False,
+        initial_prompt: Optional[str] = None
     ) -> Transcript:
         """
         Transcribes audio source and calculates processing latency & Real-Time Factor (RTF).
@@ -207,6 +215,7 @@ class WhisperService:
             target_path = temp_file_path
 
         start_time = time.perf_counter()
+        prompt_to_use = initial_prompt or self.IELTS_INITIAL_PROMPT
 
         try:
             if self.backend_type == "faster_whisper":
@@ -215,7 +224,14 @@ class WhisperService:
                         str(target_path),
                         language=target_lang,
                         task=task,
-                        beam_size=beam_size
+                        beam_size=beam_size,
+                        initial_prompt=prompt_to_use,
+                        temperature=0.0,
+                        vad_filter=True,
+                        vad_parameters=dict(min_silence_duration_ms=400, threshold=0.35),
+                        condition_on_previous_text=False,
+                        no_speech_threshold=0.6,
+                        compression_ratio_threshold=2.4
                     )
                     segments = []
                     texts = []
